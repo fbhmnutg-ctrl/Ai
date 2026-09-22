@@ -1,0 +1,43 @@
+name: Android Build APK
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Create keystore file
+      run: |
+        mkdir -p ~/.android
+        keytool -genkey -v -keystore app/keystore.jks -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        cp app/keystore.jks ~/.android/debug.keystore
+
+    - name: Build APK with Gradle
+      run: |
+        gradle assembleBasicDebug --no-daemon \
+          -Pandroid.injected.signing.store.file=$(pwd)/app/keystore.jks \
+          -Pandroid.injected.signing.store.password=android \
+          -Pandroid.injected.signing.key.alias=androiddebugkey \
+          -Pandroid.injected.signing.key.password=android \
+          -Djava.awt.headless=true \
+          -Dkotlin.compiler.execution.strategy=in-process \
+          -Dksp.use.ksp2=true
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Lon
+        path: app/build/outputs/apk/basic/debug/*.apk
