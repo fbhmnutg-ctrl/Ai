@@ -81,8 +81,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var modelLoadingJob: Job? = null
 
     val settingsManager = SettingsManager.getInstance(application)
-    val isAmprEnabled: StateFlow<Boolean> = settingsManager.isAmprEnabled
-    val isDeepReasoningEnabled: StateFlow<Boolean> = settingsManager.isDeepReasoningEnabled
     val isStreamingEnabled: StateFlow<Boolean> = settingsManager.isStreamingEnabled
     val isIntegratedThinkEnabled: StateFlow<Boolean> = settingsManager.isIntegratedThinkEnabled
 
@@ -420,14 +418,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     localEngine.generateLocalStream(
                         model = model,
                         messages = _currentMessages.value,
+                        userPromptOverride = prompt,
                         systemPrompt = _systemPrompt.value,
                         temperature = _temperature.value,
                         topP = _topP.value,
                         numThreads = _cpuThreads.value,
-                        isAmprEnabled = isAmprEnabled.value,
-                        amprKPaths = settingsManager.amprKPaths.value,
-                        isDeepReasoningEnabled = isDeepReasoningEnabled.value,
-                        deepReasoningEffort = settingsManager.deepReasoningEffort.value,
                         isIntegratedThinkEnabled = isIntegratedThinkEnabled.value,
                         isGpuOffloadEnabled = settingsManager.isGpuOffloadEnabled.value,
                         gpuOffloadLayers = settingsManager.gpuOffloadLayers.value,
@@ -491,19 +486,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                                 engineDescription = finalMetrics.engineDescription
                             )
 
-                            val modelTag = when {
-                                finalMetrics.isDeepReasoningActive -> {
-                                    "🔮 ${model.name} (${model.quantization} • Deep Reasoning)"
-                                }
-                                finalMetrics.isAmprActive -> {
-                                    "🧠 ${model.name} (${model.quantization} • AMPR K=${finalMetrics.amprKPaths} H(S)=${finalMetrics.amprEntropyBits})"
-                                }
-                                finalMetrics.isNativeEngine -> {
-                                    "⚡ ${model.name} (${model.quantization} • Native)"
-                                }
-                                else -> {
-                                    "${model.name} (${model.quantization})"
-                                }
+                            val modelTag = if (finalMetrics.isNativeEngine) {
+                                "⚡ ${model.name} (${model.quantization} • Native)"
+                            } else {
+                                "${model.name} (${model.quantization})"
                             }
 
                             chatRepository.insertMessage(

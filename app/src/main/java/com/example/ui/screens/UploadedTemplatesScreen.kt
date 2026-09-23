@@ -4,6 +4,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.example.engine.QuantizationEngine
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -49,6 +54,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -599,9 +605,12 @@ fun AddCustomTemplateDialog(
 ) {
     var name by remember { mutableStateOf("") }
     var architecture by remember { mutableStateOf("llama") }
-    var quantization by remember { mutableStateOf("Q4_K_M") }
+    var quantization by remember { mutableStateOf("Q6_K_P") }
     var parameterCount by remember { mutableStateOf("1.5B") }
     var downloadUrl by remember { mutableStateOf("") }
+
+    val commonQuants = listOf("Q6_K_P", "Q6_K", "Q8_0", "Q5_K_M", "Q4_K_M", "IQ4_NL", "IQ3_XXS", "Q3_K_M", "FP16")
+    val quantInfo = QuantizationEngine.find(quantization)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -617,19 +626,26 @@ fun AddCustomTemplateDialog(
         },
         text = {
             Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Configure a custom GGUF template profile to load on-device.",
+                    text = "Configure a custom GGUF template profile to load on-device with exact llama.cpp precision parameters.",
                     color = TextSecondary,
                     fontSize = 11.sp
                 )
 
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { 
+                        name = it
+                        val extracted = QuantizationEngine.extractFromFilename(it)
+                        if (extracted != "Q4_K_M") {
+                            quantization = extracted
+                        }
+                    },
                     label = { Text("Template Name", color = TextSecondary, fontSize = 11.sp) },
-                    placeholder = { Text("e.g., DeepSeek R1 1.5B Custom", color = TextMuted, fontSize = 11.sp) },
+                    placeholder = { Text("e.g., DeepSeek R1 Q6_K_P Custom", color = TextMuted, fontSize = 11.sp) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
@@ -648,7 +664,7 @@ fun AddCustomTemplateDialog(
                         value = architecture,
                         onValueChange = { architecture = it },
                         label = { Text("Architecture", color = TextSecondary, fontSize = 10.sp) },
-                        placeholder = { Text("llama, qwen2", color = TextMuted, fontSize = 11.sp) },
+                        placeholder = { Text("llama, qwen2, deepseek2", color = TextMuted, fontSize = 11.sp) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimary,
@@ -663,7 +679,7 @@ fun AddCustomTemplateDialog(
                         value = quantization,
                         onValueChange = { quantization = it },
                         label = { Text("Quantization", color = TextSecondary, fontSize = 10.sp) },
-                        placeholder = { Text("Q4_K_M", color = TextMuted, fontSize = 11.sp) },
+                        placeholder = { Text("Q6_K_P, Q8_0, IQ4_NL", color = TextMuted, fontSize = 11.sp) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimary,
@@ -675,11 +691,77 @@ fun AddCustomTemplateDialog(
                     )
                 }
 
+                // Quick Quantization Selection Chips
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Select Quantization Level:", color = TextMuted, fontSize = 10.sp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(commonQuants) { q ->
+                            val isSelected = quantization.equals(q, ignoreCase = true)
+                            val qMeta = QuantizationEngine.find(q)
+                            val badgeColor = Color(qMeta.category.badgeColorHex)
+                            Surface(
+                                modifier = Modifier.clickable { quantization = q },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelected) badgeColor.copy(alpha = 0.25f) else ObsidianSurface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (isSelected) 1.dp else 0.5.dp,
+                                    if (isSelected) badgeColor else ObsidianBorder
+                                )
+                            ) {
+                                Text(
+                                    text = q,
+                                    color = if (isSelected) badgeColor else TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Quantization Real-Time Detail Card
+                Surface(
+                    color = ObsidianSurface,
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(quantInfo.category.badgeColorHex).copy(alpha = 0.4f))
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${quantInfo.displayName} (${quantInfo.bitsPerWeight} bpw)",
+                                color = Color(quantInfo.category.badgeColorHex),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = quantInfo.qualityTier,
+                                color = TextPrimary,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Text(
+                            text = quantInfo.description,
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = parameterCount,
                     onValueChange = { parameterCount = it },
                     label = { Text("Parameter Count", color = TextSecondary, fontSize = 11.sp) },
-                    placeholder = { Text("e.g. 135M, 1B, 1.5B, 3B", color = TextMuted, fontSize = 11.sp) },
+                    placeholder = { Text("e.g. 135M, 1B, 1.5B, 3B, 7B", color = TextMuted, fontSize = 11.sp) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
@@ -692,7 +774,13 @@ fun AddCustomTemplateDialog(
 
                 OutlinedTextField(
                     value = downloadUrl,
-                    onValueChange = { downloadUrl = it },
+                    onValueChange = { 
+                        downloadUrl = it
+                        val extracted = QuantizationEngine.extractFromFilename(it)
+                        if (extracted != "Q4_K_M") {
+                            quantization = extracted
+                        }
+                    },
                     label = { Text("Hugging Face / GGUF URL (Optional)", color = TextSecondary, fontSize = 11.sp) },
                     placeholder = { Text("https://huggingface.co/...", color = TextMuted, fontSize = 11.sp) },
                     singleLine = true,
@@ -713,7 +801,7 @@ fun AddCustomTemplateDialog(
                         onAdd(
                             name.trim(),
                             architecture.trim().ifEmpty { "llama" },
-                            quantization.trim().ifEmpty { "Q4_K_M" },
+                            quantization.trim().ifEmpty { "Q6_K_P" },
                             parameterCount.trim().ifEmpty { "1.5B" },
                             downloadUrl.trim().ifEmpty { null }
                         )

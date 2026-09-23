@@ -51,6 +51,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.example.engine.QuantizationEngine
+import com.example.engine.QuantCategory
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -99,6 +104,7 @@ fun ModelHubScreen(
     val hardwareInfo by viewModel.hardwareInfo.collectAsStateWithLifecycle()
     val importedMetadata by viewModel.importedGgufMetadata.collectAsStateWithLifecycle()
     val inspectingModel by viewModel.inspectingModel.collectAsStateWithLifecycle()
+    var showQuantGuideDialog by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -128,7 +134,8 @@ fun ModelHubScreen(
         // Hardware Status Dashboard Card
         HardwareStatusHeader(
             hardwareInfo = hardwareInfo,
-            onImportGgufClick = { filePickerLauncher.launch("*/*") }
+            onImportGgufClick = { filePickerLauncher.launch("*/*") },
+            onQuantGuideClick = { showQuantGuideDialog = true }
         )
 
         // Filters and Search Bar
@@ -141,7 +148,7 @@ fun ModelHubScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.setSearchQuery(it) },
-                placeholder = { Text("Search GGUF models or architecture...", color = TextMuted, fontSize = 13.sp) },
+                placeholder = { Text("Search models, arch, or quant (Q6_K_P, Q8_0, IQ4_NL)...", color = TextMuted, fontSize = 13.sp) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted, modifier = Modifier.size(18.dp)) },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -215,9 +222,17 @@ fun ModelHubScreen(
         }
     }
 
+    // Quantization Guide Dialog
+    if (showQuantGuideDialog) {
+        QuantizationMatrixDialog(
+            onDismiss = { showQuantGuideDialog = false }
+        )
+    }
+
     // GGUF Import Confirmation Dialog
     if (importedMetadata != null) {
         val meta = importedMetadata!!
+        val quantInfo = QuantizationEngine.find(meta.quantization)
         AlertDialog(
             onDismissRequest = { viewModel.dismissImportDialog() },
             containerColor = ObsidianCard,
@@ -239,7 +254,8 @@ fun ModelHubScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         GgufDetailRow("Model Name", meta.modelName)
                         GgufDetailRow("Architecture", meta.architecture)
-                        GgufDetailRow("Quantization", meta.quantization)
+                        GgufDetailRow("Quantization", "${meta.quantization} (${quantInfo.bitsPerWeight} bpw)")
+                        GgufDetailRow("Quality Tier", quantInfo.qualityTier)
                         GgufDetailRow("File Size", meta.fileSizeFormatted)
                         GgufDetailRow("Tensors Count", "${meta.tensorCount}")
                         GgufDetailRow("Layers", "${meta.layerCount}")
@@ -268,19 +284,45 @@ fun ModelHubScreen(
     // Model Inspect Dialog
     if (inspectingModel != null) {
         val m = inspectingModel!!
+        val quantInfo = QuantizationEngine.find(m.quantization)
         AlertDialog(
             onDismissRequest = { viewModel.inspectModel(null) },
             containerColor = ObsidianCard,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = m.name, color = TextPrimary, fontWeight = FontWeight.Bold)
-                    GgufTag(text = m.quantization)
+                    Text(text = m.name, color = TextPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
+                    GgufTag(
+                        text = m.quantization,
+                        color = Color(quantInfo.category.badgeColorHex)
+                    )
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(text = m.description, color = TextSecondary, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Quantization Deep-Dive Box
+                    Surface(
+                        color = ObsidianSurface,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.Tune, contentDescription = null, tint = Color(quantInfo.category.badgeColorHex), modifier = Modifier.size(16.dp))
+                                Text(text = quantInfo.displayName, color = Color(quantInfo.category.badgeColorHex), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(text = "• Fidelity: ${quantInfo.qualityTier} (~${quantInfo.bitsPerWeight} bits/weight)", color = TextPrimary, fontSize = 11.sp)
+                            Text(text = "• Math & Logic: ${quantInfo.description}", color = TextSecondary, fontSize = 11.sp)
+                            Text(text = "• Ideal For: ${quantInfo.recommendedUse}", color = TextMuted, fontSize = 10.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
                     GgufDetailRow("Architecture", m.architecture)
                     GgufDetailRow("Quantization", m.quantization)
                     GgufDetailRow("Parameters", m.parameterCount)
@@ -306,9 +348,108 @@ fun ModelHubScreen(
 }
 
 @Composable
+fun QuantizationMatrixDialog(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ObsidianCard,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.Tune, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(20.dp))
+                Text("GGUF Quantization Matrix", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Supported quantization levels in llama.cpp engine. Quantization maps high-precision float weights into discrete bit representations to fit larger models into device RAM without erratic behavior.",
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+
+                QuantizationEngine.ALL_QUANTS.forEach { q ->
+                    Surface(
+                        color = ObsidianSurface,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(q.category.badgeColorHex).copy(alpha = 0.3f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = q.displayName,
+                                    color = Color(q.category.badgeColorHex),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Surface(
+                                    color = Color(q.category.badgeColorHex).copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "${q.bitsPerWeight} bpw",
+                                        color = Color(q.category.badgeColorHex),
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Quality: ${q.qualityTier}",
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = q.description,
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                            Text(
+                                text = "Recommended: ${q.recommendedUse}",
+                                color = TextMuted,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
+            ) {
+                Text("Close", color = Color(0xFF00363D))
+            }
+        }
+    )
+}
+
+@Composable
 fun HardwareStatusHeader(
     hardwareInfo: DeviceHardwareInfo,
     onImportGgufClick: () -> Unit,
+    onQuantGuideClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -325,7 +466,7 @@ fun HardwareStatusHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Device Memory & Compute",
                         color = TextPrimary,
@@ -339,17 +480,31 @@ fun HardwareStatusHeader(
                     )
                 }
 
-                // Import GGUF button
-                Button(
-                    onClick = onImportGgufClick,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyanSubtle),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    modifier = Modifier.testTag("import_gguf_button")
-                ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Import .GGUF", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Quants Guide Button
+                    Button(
+                        onClick = onQuantGuideClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = VioletNeural.copy(alpha = 0.15f)),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null, tint = VioletNeural, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Quants", color = VioletNeural, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // Import GGUF button
+                    Button(
+                        onClick = onImportGgufClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyanSubtle),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("import_gguf_button")
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Import .GGUF", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
@@ -409,6 +564,7 @@ fun ModelCard(
     modifier: Modifier = Modifier
 ) {
     val isHf = model.source == "HUGGING_FACE"
+    val quantInfo = QuantizationEngine.find(model.quantization)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -439,7 +595,7 @@ fun ModelCard(
                     )
                     GgufTag(
                         text = model.quantization,
-                        color = if (isHf) Color(0xFFFFB347) else NeonCyan
+                        color = if (isHf) Color(0xFFFFB347) else Color(quantInfo.category.badgeColorHex)
                     )
                     if (isHf) {
                         HuggingFaceBadge(text = "Hugging Face")

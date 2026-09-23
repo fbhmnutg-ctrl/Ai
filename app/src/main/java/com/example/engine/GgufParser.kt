@@ -96,19 +96,12 @@ object GgufParser {
             else -> "llama"
         }
 
-        val quant = when {
-            "q4_k_m" in lowerName || "q4_k" in lowerName -> "Q4_K_M"
-            "q4_0" in lowerName -> "Q4_0"
-            "q5_k_m" in lowerName || "q5_k" in lowerName -> "Q5_K_M"
-            "q8_0" in lowerName -> "Q8_0"
-            "f16" in lowerName || "fp16" in lowerName -> "FP16"
-            "q3_k_m" in lowerName -> "Q3_K_M"
-            else -> "Q4_K_M"
-        }
+        val quantInfo = QuantizationEngine.parseFromFilename(filename)
+        val quant = quantInfo.code
 
         val effectiveSize = if (fileSizeBytes > 0) fileSizeBytes else 85_000_000L
         val sizeMb = (effectiveSize / (1024 * 1024)).toInt().coerceAtLeast(50)
-        val estimatedRam = (sizeMb * 1.35f + 120).toInt()
+        val estimatedRam = (sizeMb * (1.15f * (quantInfo.ramFactor / 1.15f)) + 120).toInt()
 
         val formattedSize = if (effectiveSize > 1024 * 1024 * 1024) {
             String.format("%.2f GB", effectiveSize / (1024.0 * 1024.0 * 1024.0))
@@ -152,6 +145,7 @@ object GgufParser {
             "deepseek" in lowerName -> "deepseek"
             else -> "llama"
         }
+        val quantInfo = QuantizationEngine.parseFromFilename(filename)
         val size = if (fileSizeBytes > 0) fileSizeBytes else 95_000_000L
         val sizeMb = (size / (1024 * 1024)).toInt().coerceAtLeast(60)
 
@@ -163,14 +157,14 @@ object GgufParser {
             metadataKvCount = 20L,
             architecture = arch,
             modelName = cleanName.ifBlank { "Imported Template" },
-            quantization = "Q4_K_M",
+            quantization = quantInfo.code,
             contextLength = 2048,
             embeddingLength = 2048,
             layerCount = 14,
             headCount = 32,
             fileSizeFormatted = String.format("%.1f MB", size / (1024.0 * 1024.0)),
             fileSizeBytes = size,
-            estimatedRamRequiredMb = (sizeMb * 1.3f + 100).toInt()
+            estimatedRamRequiredMb = (sizeMb * quantInfo.ramFactor + 90).toInt()
         )
     }
 }

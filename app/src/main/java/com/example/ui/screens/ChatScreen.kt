@@ -132,8 +132,6 @@ fun ChatScreen(
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val currentSessionId by viewModel.currentSessionId.collectAsStateWithLifecycle()
     val templateSelectionList by viewModel.templateSelectionList.collectAsStateWithLifecycle()
-    val isAmprEnabled by viewModel.isAmprEnabled.collectAsStateWithLifecycle()
-    val isDeepReasoningEnabled by viewModel.isDeepReasoningEnabled.collectAsStateWithLifecycle()
     val isIntegratedThinkEnabled by viewModel.isIntegratedThinkEnabled.collectAsStateWithLifecycle()
     val modelLoadingState by viewModel.modelLoadingState.collectAsStateWithLifecycle()
 
@@ -496,41 +494,6 @@ fun ChatScreen(
             }
         }
 
-        // Active Reasoning Pill (Subtle top strip if enabled)
-        if (isDeepReasoningEnabled || isAmprEnabled) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(devTheme.surface.copy(alpha = 0.6f))
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isDeepReasoningEnabled) Icons.Default.AutoAwesome else Icons.Default.Psychology,
-                        contentDescription = null,
-                        tint = if (isDeepReasoningEnabled) devTheme.tertiary else devTheme.primary,
-                        modifier = Modifier.size(12.dp)
-                    )
-                    Text(
-                        text = if (isDeepReasoningEnabled) "Deep Reasoning Active" else "AMPR Multi-Path Active",
-                        color = if (isDeepReasoningEnabled) devTheme.tertiary else devTheme.primary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                Text(
-                    text = if (isDeepReasoningEnabled) "Chain-of-Thought" else "Adaptive Entropy",
-                    color = devTheme.textMuted,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
 
         // Messages List or Simple Beautiful Developer Empty State
         Box(

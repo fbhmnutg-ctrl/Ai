@@ -13,19 +13,6 @@ class SettingsManager private constructor(context: Context) {
         Context.MODE_PRIVATE
     )
 
-    private val _isAmprEnabled = MutableStateFlow(prefs.getBoolean(KEY_AMPR_ENABLED, false))
-    val isAmprEnabled: StateFlow<Boolean> = _isAmprEnabled.asStateFlow()
-
-    private val _amprKPaths = MutableStateFlow(prefs.getInt(KEY_AMPR_K_PATHS, 3))
-    val amprKPaths: StateFlow<Int> = _amprKPaths.asStateFlow()
-
-    // Deep Reasoning Mode (Mutually exclusive with AMPR)
-    private val _isDeepReasoningEnabled = MutableStateFlow(prefs.getBoolean(KEY_DEEP_REASONING_ENABLED, false))
-    val isDeepReasoningEnabled: StateFlow<Boolean> = _isDeepReasoningEnabled.asStateFlow()
-
-    private val _deepReasoningEffort = MutableStateFlow(prefs.getString(KEY_DEEP_REASONING_EFFORT, "MEDIUM") ?: "MEDIUM")
-    val deepReasoningEffort: StateFlow<String> = _deepReasoningEffort.asStateFlow()
-
     private val _cpuThreads = MutableStateFlow(prefs.getInt(KEY_CPU_THREADS, 4))
     val cpuThreads: StateFlow<Int> = _cpuThreads.asStateFlow()
 
@@ -44,22 +31,6 @@ class SettingsManager private constructor(context: Context) {
     private val _appTheme = MutableStateFlow(prefs.getString(KEY_APP_THEME, "CATPPUCCIN") ?: "CATPPUCCIN")
     val appTheme: StateFlow<String> = _appTheme.asStateFlow()
 
-    // Native C++ PocketMath Core Flags
-    private val _enableFractionalEntropy = MutableStateFlow(prefs.getBoolean(KEY_FRACTIONAL_ENTROPY, true))
-    val enableFractionalEntropy: StateFlow<Boolean> = _enableFractionalEntropy.asStateFlow()
-
-    private val _enablePoincareAttention = MutableStateFlow(prefs.getBoolean(KEY_POINCARE_ATTENTION, true))
-    val enablePoincareAttention: StateFlow<Boolean> = _enablePoincareAttention.asStateFlow()
-
-    private val _enableRiemannianEKF = MutableStateFlow(prefs.getBoolean(KEY_RIEMANNIAN_EKF, true))
-    val enableRiemannianEKF: StateFlow<Boolean> = _enableRiemannianEKF.asStateFlow()
-
-    private val _enableSpectralFFT = MutableStateFlow(prefs.getBoolean(KEY_SPECTRAL_FFT, true))
-    val enableSpectralFFT: StateFlow<Boolean> = _enableSpectralFFT.asStateFlow()
-
-    private val _fractionalAlpha = MutableStateFlow(prefs.getFloat(KEY_FRACTIONAL_ALPHA, 0.5f))
-    val fractionalAlpha: StateFlow<Float> = _fractionalAlpha.asStateFlow()
-
     // Hybrid GPU + CPU Offloading and Memory OOM Guard Settings
     private val _isGpuOffloadEnabled = MutableStateFlow(prefs.getBoolean(KEY_GPU_OFFLOAD_ENABLED, true))
     val isGpuOffloadEnabled: StateFlow<Boolean> = _isGpuOffloadEnabled.asStateFlow()
@@ -70,52 +41,6 @@ class SettingsManager private constructor(context: Context) {
     private val _isOomGuardEnabled = MutableStateFlow(prefs.getBoolean(KEY_OOM_GUARD_ENABLED, true))
     val isOomGuardEnabled: StateFlow<Boolean> = _isOomGuardEnabled.asStateFlow()
 
-    init {
-        syncPocketMathConfig()
-    }
-
-    private fun syncPocketMathConfig() {
-        com.example.engine.NativePocketMathBridge.updateConfig(
-            com.example.engine.PocketMathConfig(
-                enableFractionalEntropy = _enableFractionalEntropy.value,
-                enablePoincareAttention = _enablePoincareAttention.value,
-                enableRiemannianEKF = _enableRiemannianEKF.value,
-                enableSpectralFFT = _enableSpectralFFT.value,
-                fractionalAlpha = _fractionalAlpha.value
-            )
-        )
-    }
-
-    fun setFractionalEntropy(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_FRACTIONAL_ENTROPY, enabled).apply()
-        _enableFractionalEntropy.value = enabled
-        syncPocketMathConfig()
-    }
-
-    fun setPoincareAttention(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_POINCARE_ATTENTION, enabled).apply()
-        _enablePoincareAttention.value = enabled
-        syncPocketMathConfig()
-    }
-
-    fun setRiemannianEKF(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_RIEMANNIAN_EKF, enabled).apply()
-        _enableRiemannianEKF.value = enabled
-        syncPocketMathConfig()
-    }
-
-    fun setSpectralFFT(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_SPECTRAL_FFT, enabled).apply()
-        _enableSpectralFFT.value = enabled
-        syncPocketMathConfig()
-    }
-
-    fun setFractionalAlpha(alpha: Float) {
-        prefs.edit().putFloat(KEY_FRACTIONAL_ALPHA, alpha).apply()
-        _fractionalAlpha.value = alpha
-        syncPocketMathConfig()
-    }
-
     fun setAppTheme(theme: String) {
         prefs.edit().putString(KEY_APP_THEME, theme).apply()
         _appTheme.value = theme
@@ -124,37 +49,6 @@ class SettingsManager private constructor(context: Context) {
     fun setStreamingEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_STREAMING_ENABLED, enabled).apply()
         _isStreamingEnabled.value = enabled
-    }
-
-    fun setAmprEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_AMPR_ENABLED, enabled).apply()
-        _isAmprEnabled.value = enabled
-        // Crucial: AMPR and Deep Reasoning cannot run simultaneously
-        if (enabled && _isDeepReasoningEnabled.value) {
-            prefs.edit().putBoolean(KEY_DEEP_REASONING_ENABLED, false).apply()
-            _isDeepReasoningEnabled.value = false
-        }
-    }
-
-    fun setDeepReasoningEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_DEEP_REASONING_ENABLED, enabled).apply()
-        _isDeepReasoningEnabled.value = enabled
-        // Crucial: AMPR and Deep Reasoning cannot run simultaneously
-        if (enabled && _isAmprEnabled.value) {
-            prefs.edit().putBoolean(KEY_AMPR_ENABLED, false).apply()
-            _isAmprEnabled.value = false
-        }
-    }
-
-    fun setDeepReasoningEffort(effort: String) {
-        prefs.edit().putString(KEY_DEEP_REASONING_EFFORT, effort).apply()
-        _deepReasoningEffort.value = effort
-    }
-
-    fun setAmprKPaths(k: Int) {
-        val clamped = k.coerceIn(2, 4)
-        prefs.edit().putInt(KEY_AMPR_K_PATHS, clamped).apply()
-        _amprKPaths.value = clamped
     }
 
     fun setIntegratedThinkEnabled(enabled: Boolean) {
@@ -195,21 +89,11 @@ class SettingsManager private constructor(context: Context) {
     }
 
     companion object {
-        private const val KEY_AMPR_ENABLED = "key_ampr_enabled"
-        private const val KEY_AMPR_K_PATHS = "key_ampr_k_paths"
-        private const val KEY_DEEP_REASONING_ENABLED = "key_deep_reasoning_enabled"
-        private const val KEY_DEEP_REASONING_EFFORT = "key_deep_reasoning_effort"
         private const val KEY_CPU_THREADS = "key_cpu_threads"
         private const val KEY_CONTEXT_LENGTH = "key_context_length"
         private const val KEY_STREAMING_ENABLED = "key_streaming_enabled"
         private const val KEY_INTEGRATED_THINK_ENABLED = "key_integrated_think_enabled"
         private const val KEY_APP_THEME = "key_app_theme"
-
-        private const val KEY_FRACTIONAL_ENTROPY = "key_fractional_entropy"
-        private const val KEY_POINCARE_ATTENTION = "key_poincare_attention"
-        private const val KEY_RIEMANNIAN_EKF = "key_riemannian_ekf"
-        private const val KEY_SPECTRAL_FFT = "key_spectral_fft"
-        private const val KEY_FRACTIONAL_ALPHA = "key_fractional_alpha"
 
         private const val KEY_GPU_OFFLOAD_ENABLED = "key_gpu_offload_enabled"
         private const val KEY_GPU_OFFLOAD_LAYERS = "key_gpu_offload_layers"

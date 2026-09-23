@@ -62,8 +62,26 @@ abstract class AppDatabase : RoomDatabase() {
                 val modelDao = database.modelDao()
                 val chatDao = database.chatDao()
 
-                // Curated mobile-friendly GGUF models
+                // Curated mobile-friendly GGUF models across diverse quantization formats
                 val initialModels = listOf(
+                    LocalModelEntity(
+                        id = "qwen-2.5-0.5b-q6-k-p",
+                        name = "Qwen 2.5 0.5B (Q6_K_P Precision)",
+                        filename = "Qwen2.5-0.5B-Instruct-Q6_K_P.gguf",
+                        architecture = "qwen2",
+                        quantization = "Q6_K_P",
+                        parameterCount = "0.49B",
+                        sizeBytes = 492830720L, // ~470 MB
+                        requiredRamMb = 750,
+                        contextLength = 4096,
+                        isDownloaded = false,
+                        downloadProgress = 0f,
+                        filePath = null,
+                        source = "LOCAL_GGUF",
+                        description = "High-precision 6-bit K-quant (Q6_K_P). Delivers enhanced mathematical fidelity and code generation with virtually zero loss.",
+                        isFavorite = true,
+                        downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q6_k.gguf"
+                    ),
                     LocalModelEntity(
                         id = "hf-smollm2-135m-test",
                         name = "SmolLM2 135M (Hugging Face)",
@@ -80,6 +98,23 @@ abstract class AppDatabase : RoomDatabase() {
                         description = "Ultra-lightweight test template from Hugging Face website (huggingface.co/HuggingFaceTB/SmolLM2-135M). Designed for fast mobile evaluation and CPU latency testing.",
                         isFavorite = true,
                         downloadUrl = "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf"
+                    ),
+                    LocalModelEntity(
+                        id = "llama-3.2-1b-instruct-q5-k-m",
+                        name = "Llama 3.2 1B (Q5_K_M Balanced)",
+                        filename = "Llama-3.2-1B-Instruct-Q5_K_M.gguf",
+                        architecture = "llama",
+                        quantization = "Q5_K_M",
+                        parameterCount = "1.23B",
+                        sizeBytes = 891289600L, // ~850 MB
+                        requiredRamMb = 1350,
+                        contextLength = 4096,
+                        isDownloaded = false,
+                        downloadProgress = 0f,
+                        source = "LOCAL_GGUF",
+                        description = "5-bit medium K-quant (Q5_K_M). Offers higher reasoning coherence and vocabulary nuance than standard 4-bit weights.",
+                        isFavorite = true,
+                        downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q5_K_M.gguf"
                     ),
                     LocalModelEntity(
                         id = "llama-3.2-1b-instruct-q4",
@@ -101,41 +136,40 @@ abstract class AppDatabase : RoomDatabase() {
                         downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
                     ),
                     LocalModelEntity(
-                        id = "deepseek-r1-1.5b-q4",
-                        name = "DeepSeek-R1 Distill 1.5B",
-                        filename = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+                        id = "deepseek-r1-1.5b-iq4-nl",
+                        name = "DeepSeek-R1 1.5B (IQ4_NL I-Matrix)",
+                        filename = "DeepSeek-R1-Distill-Qwen-1.5B-IQ4_NL.gguf",
                         architecture = "qwen2",
-                        quantization = "Q4_K_M",
+                        quantization = "IQ4_NL",
                         parameterCount = "1.54B",
-                        sizeBytes = 1181116000L, // ~1.1 GB
-                        requiredRamMb = 1800,
+                        sizeBytes = 1120000000L, // ~1.05 GB
+                        requiredRamMb = 1750,
                         contextLength = 4096,
                         isDownloaded = false,
                         downloadProgress = 0f,
                         filePath = null,
                         source = "LOCAL_GGUF",
-                        description = "State-of-the-art mobile reasoning model. Outputs step-by-step <think> chains.",
+                        description = "Importance Matrix Non-Linear 4-bit (IQ4_NL). Outperforms traditional Q4_K_M on complex reasoning and step-by-step logic chains.",
                         isFavorite = true,
                         lastUsedTimestamp = System.currentTimeMillis() - 100000,
-                        downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+                        downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_NL.gguf"
                     ),
                     LocalModelEntity(
-                        id = "qwen-2.5-0.5b-q4",
-                        name = "Qwen 2.5 0.5B Instruct",
-                        filename = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf",
-                        architecture = "qwen2",
-                        quantization = "Q4_K_M",
-                        parameterCount = "0.49B",
-                        sizeBytes = 398458880L, // ~380 MB
-                        requiredRamMb = 650,
+                        id = "smollm2-360m-instruct-q8",
+                        name = "SmolLM2 360M (Q8_0 Studio)",
+                        filename = "SmolLM2-360M-Instruct-Q8_0.gguf",
+                        architecture = "llama",
+                        quantization = "Q8_0",
+                        parameterCount = "360M",
+                        sizeBytes = 388000000L, // ~370 MB
+                        requiredRamMb = 600,
                         contextLength = 2048,
                         isDownloaded = false,
                         downloadProgress = 0f,
-                        filePath = null,
                         source = "LOCAL_GGUF",
-                        description = "Ultra-featherweight model. Runs with near-instant generation on entry-level devices.",
+                        description = "Full 8-bit studio-grade quantization (Q8_0). Near 100% full floating-point accuracy with ultra-compact RAM footprint.",
                         isFavorite = false,
-                        downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+                        downloadUrl = "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q8_0.gguf"
                     ),
                     LocalModelEntity(
                         id = "llama-3.2-3b-instruct-q4",
@@ -166,21 +200,6 @@ abstract class AppDatabase : RoomDatabase() {
                         downloadProgress = 0f,
                         source = "LOCAL_GGUF",
                         description = "Hugging Face's compact specialist. Remarkable general knowledge and math accuracy."
-                    ),
-                    LocalModelEntity(
-                        id = "phi-3.5-mini-3.8b-q4",
-                        name = "Phi-3.5 Mini 3.8B",
-                        filename = "Phi-3.5-mini-instruct-Q4_K_M.gguf",
-                        architecture = "phi3",
-                        quantization = "Q4_K_M",
-                        parameterCount = "3.82B",
-                        sizeBytes = 2390753280L, // ~2.22 GB
-                        requiredRamMb = 3600,
-                        contextLength = 4096,
-                        isDownloaded = false,
-                        downloadProgress = 0f,
-                        source = "LOCAL_GGUF",
-                        description = "Microsoft's small language model with high benchmark scores in logic and science."
                     )
                 )
 
