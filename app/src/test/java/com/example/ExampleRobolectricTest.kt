@@ -60,4 +60,100 @@ class ExampleRobolectricTest {
     val extracted3 = QuantizationEngine.extractFromFilename("qwen2.5-coder-1.5b-iq4_nl.gguf")
     assertEquals("IQ4_NL", extracted3)
   }
+
+  @Test
+  fun `gemma dynamic chat template formats correctly`() {
+    val prompt = "Explain quantum computing."
+    val formatted = com.example.engine.ChatTemplateEngine.formatPrompt(
+      com.example.engine.ModelArchitecture.GEMMA,
+      prompt
+    )
+    val expected = "<start_of_turn>user\nExplain quantum computing.<end_of_turn>\n<start_of_turn>model\n"
+    assertEquals(expected, formatted)
+  }
+
+  @Test
+  fun `llama 3 dynamic chat template formats correctly`() {
+    val prompt = "Write a quicksort in Kotlin."
+    val formatted = com.example.engine.ChatTemplateEngine.formatPrompt(
+      com.example.engine.ModelArchitecture.LLAMA_3,
+      prompt
+    )
+    val expected = "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\nWrite a quicksort in Kotlin.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+    assertEquals(expected, formatted)
+  }
+
+  @Test
+  fun `qwen 2 dynamic chat template formats correctly`() {
+    val prompt = "Hello Qwen"
+    val formatted = com.example.engine.ChatTemplateEngine.formatPrompt(
+      com.example.engine.ModelArchitecture.QWEN,
+      prompt
+    )
+    val expected = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\nHello Qwen<|im_end|>\n<|im_start|>assistant\n"
+    assertEquals(expected, formatted)
+  }
+
+  @Test
+  fun `mistral dynamic chat template formats correctly`() {
+    val prompt = "What is the speed of light?"
+    val formatted = com.example.engine.ChatTemplateEngine.formatPrompt(
+      com.example.engine.ModelArchitecture.MISTRAL,
+      prompt
+    )
+    val expected = "<s>[INST] What is the speed of light? [/INST]"
+    assertEquals(expected, formatted)
+  }
+
+  @Test
+  fun `deepseek dynamic chat template formats correctly`() {
+    val prompt = "Solve 2+2"
+    val formatted = com.example.engine.ChatTemplateEngine.formatPrompt(
+      com.example.engine.ModelArchitecture.DEEPSEEK,
+      prompt
+    )
+    val expected = "<|begin_of_sentence|>User: Solve 2+2\n\nAssistant:"
+    assertEquals(expected, formatted)
+  }
+
+  @Test
+  fun `unified stop tokens contains required hallucination prevention tokens`() {
+    val requiredTokens = listOf(
+      "<end_of_turn>", "<start_of_turn>", "<|eot_id|>", "<|start_header_id|>",
+      "<|im_end|>", "<|im_start|>", "[/INST]", "</s>", "<eos>",
+      "user:", "assistant:", "User:", "Assistant:"
+    )
+    val actualList = com.example.engine.ChatTemplateEngine.UNIFIED_STOP_TOKENS.toList()
+    for (token in requiredTokens) {
+      assertTrue("Missing stop token: $token", actualList.contains(token))
+    }
+  }
+
+  @Test
+  fun `cleanModelResponse strips residual control tokens and role headers`() {
+    // Test Llama 3 residual tokens & hallucinated user turn
+    val rawLlama = "Kotlin is a statically typed language.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nWhat about Java?"
+    val cleanedLlama = com.example.engine.ChatTemplateEngine.cleanModelResponse(rawLlama)
+    assertEquals("Kotlin is a statically typed language.", cleanedLlama)
+
+    // Test Gemma turn tokens
+    val rawGemma = "<start_of_turn>model\nHello! How can I assist you today?<end_of_turn>"
+    val cleanedGemma = com.example.engine.ChatTemplateEngine.cleanModelResponse(rawGemma)
+    assertEquals("Hello! How can I assist you today?", cleanedGemma)
+
+    // Test Qwen tokens
+    val rawQwen = "<|im_start|>assistant\nI am Qwen 2.5.<|im_end|>"
+    val cleanedQwen = com.example.engine.ChatTemplateEngine.cleanModelResponse(rawQwen)
+    assertEquals("I am Qwen 2.5.", cleanedQwen)
+
+    // Test Mistral INST tokens
+    val rawMistral = "[INST] How's the weather? [/INST] It is sunny and pleasant today!</s>"
+    val cleanedMistral = com.example.engine.ChatTemplateEngine.cleanModelResponse(rawMistral)
+    assertEquals("It is sunny and pleasant today!", cleanedMistral)
+
+    // Test DeepSeek format and hallucinated user turn
+    val rawDeepSeek = "<|begin_of_sentence|>User: Solve 2+2\n\nAssistant: The answer is 4.\nUser: Solve 3+3\nAssistant: 6."
+    val cleanedDeepSeek = com.example.engine.ChatTemplateEngine.cleanModelResponse(rawDeepSeek)
+    assertEquals("The answer is 4.", cleanedDeepSeek)
+  }
 }

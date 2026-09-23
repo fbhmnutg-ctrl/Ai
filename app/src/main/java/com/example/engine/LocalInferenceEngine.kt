@@ -34,32 +34,8 @@ class LocalInferenceEngine {
             return text.any { it in '\u0600'..'\u06FF' || it in '\u0750'..'\u077F' || it in '\u08A0'..'\u08FF' }
         }
 
-        private val STOP_TOKENS = listOf(
-            "<|im_end|>",
-            "<|eot_id|>",
-            "<|end_of_text|>",
-            "<|endoftext|>",
-            "<end_of_turn>",
-            "</s>",
-            "<s>",
-            "<|im_start|>",
-            "<|start_header_id|>",
-            "<|end_header_id|>"
-        )
-
         fun cleanStopTokens(text: String): String {
-            var cleaned = text
-            for (token in STOP_TOKENS) {
-                cleaned = cleaned.replace(token, "")
-            }
-            if (cleaned.startsWith("Assistant:\n")) {
-                cleaned = cleaned.removePrefix("Assistant:\n")
-            } else if (cleaned.startsWith("Assistant:")) {
-                cleaned = cleaned.removePrefix("Assistant:")
-            } else if (cleaned.startsWith("assistant\n")) {
-                cleaned = cleaned.removePrefix("assistant\n")
-            }
-            return cleaned.trim()
+            return ChatTemplateEngine.cleanModelResponse(text)
         }
     }
 
@@ -160,13 +136,14 @@ class LocalInferenceEngine {
             contextLength = offloadPlan.safeContextLength,
             threads = offloadPlan.cpuThreads,
             gpuLayers = offloadPlan.gpuOffloadLayers,
-            maxTokens = 2048
+            maxTokens = 2048,
+            stopTokens = ChatTemplateEngine.UNIFIED_STOP_TOKENS
         )
 
         val ttft = (System.currentTimeMillis() - startTime).coerceAtLeast(10L)
 
         val generatedRawText = if (nativeResult.isNativeExecution) {
-            cleanStopTokens(nativeResult.text)
+            ChatTemplateEngine.cleanModelResponse(nativeResult.text)
         } else {
             val err = nativeResult.errorDetails ?: "Unknown runtime error during native inference execution."
             if (isArabic) {

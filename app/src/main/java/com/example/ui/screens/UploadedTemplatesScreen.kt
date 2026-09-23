@@ -216,7 +216,7 @@ fun UploadedTemplatesScreen(
                 OutlinedButton(
                     onClick = { showAddCustomDialog = true },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCyan),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(ObsidianBorder)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .weight(1f)
@@ -404,7 +404,7 @@ fun UploadedTemplatesEmptyState(
             OutlinedButton(
                 onClick = onAddTemplateClick,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(ObsidianBorder)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -539,7 +539,7 @@ fun UploadedTemplateCard(
                 OutlinedButton(
                     onClick = onUnloadClick,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFEF4444).copy(alpha = 0.4f))),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f)),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .height(38.dp)

@@ -79,11 +79,12 @@ object NativeLlamaBridge {
     suspend fun executeInference(
         modelFilePath: String,
         prompt: String,
-        systemPrompt: String,
+        systemPrompt: String = "",
         contextLength: Int = 2048,
         threads: Int = 4,
         gpuLayers: Int = 0,
-        maxTokens: Int = 2048
+        maxTokens: Int = 2048,
+        stopTokens: Array<String> = ChatTemplateEngine.UNIFIED_STOP_TOKENS
     ): NativeInferenceResult = withContext(Dispatchers.IO) {
         val file = File(modelFilePath)
         if (!file.exists()) {
@@ -132,8 +133,9 @@ object NativeLlamaBridge {
             }
 
             Log.i(TAG, "Native completion finished at ${completionResult.tokensPerSecond} tok/s")
+            val cleanedText = ChatTemplateEngine.cleanModelResponse(completionResult.text)
             NativeInferenceResult(
-                text = completionResult.text,
+                text = cleanedText,
                 tokensPerSecond = completionResult.tokensPerSecond,
                 isNativeExecution = true,
                 engineName = engineLabel,

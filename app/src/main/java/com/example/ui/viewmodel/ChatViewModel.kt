@@ -14,6 +14,7 @@ import com.example.data.ollama.OllamaChatRequest
 import com.example.data.ollama.OllamaClient
 import com.example.data.repository.ChatRepository
 import com.example.data.repository.ModelRepository
+import com.example.engine.ChatTemplateEngine
 import com.example.engine.GenerationMetrics
 import com.example.engine.LocalInferenceEngine
 import com.example.engine.NativeLlamaBridge
@@ -320,25 +321,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val currentStream = _generationState.value.streamingContent
         val sId = _currentSessionId.value
         if (sId != null && currentStream.isNotBlank()) {
-            val model = _activeModel.value
-            val metrics = _generationState.value
-            viewModelScope.launch {
-                try {
-                    chatRepository.insertMessage(
-                        ChatMessage(
-                            sessionId = sId,
-                            role = "assistant",
-                            content = currentStream.trim() + " ⏹",
-                            tokensCount = metrics.tokensGenerated,
-                            tokensPerSecond = metrics.tokensPerSecond,
-                            generationDurationMs = metrics.durationMs,
-                            timeToFirstTokenMs = metrics.timeToFirstTokenMs,
-                            modelTag = model?.name ?: "Local GGUF"
+            val cleanedStream = ChatTemplateEngine.cleanModelResponse(currentStream)
+            if (cleanedStream.isNotBlank()) {
+                val model = _activeModel.value
+                val metrics = _generationState.value
+                viewModelScope.launch {
+                    try {
+                        chatRepository.insertMessage(
+                            ChatMessage(
+                                sessionId = sId,
+                                role = "assistant",
+                                content = "$cleanedStream ⏹",
+                                tokensCount = metrics.tokensGenerated,
+                                tokensPerSecond = metrics.tokensPerSecond,
+                                generationDurationMs = metrics.durationMs,
+                                timeToFirstTokenMs = metrics.timeToFirstTokenMs,
+                                modelTag = model?.name ?: "Local GGUF"
+                            )
                         )
-                    )
-                    chatRepository.touchSession(sId)
-                } catch (_: Exception) {
-                    // Safe ignore
+                        chatRepository.touchSession(sId)
+                    } catch (_: Exception) {
+                        // Safe ignore
+                    }
                 }
             }
         }
@@ -492,19 +496,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                                 "${model.name} (${model.quantization})"
                             }
 
-                            chatRepository.insertMessage(
-                                ChatMessage(
-                                    sessionId = sessionId,
-                                    role = "assistant",
-                                    content = accumulated.toString(),
-                                    tokensCount = finalMetrics.tokensGenerated,
-                                    tokensPerSecond = finalMetrics.tokensPerSecond,
-                                    generationDurationMs = finalMetrics.totalDurationMs,
-                                    timeToFirstTokenMs = finalMetrics.timeToFirstTokenMs,
-                                    modelTag = modelTag
+                            val cleanedContent = ChatTemplateEngine.cleanModelResponse(accumulated.toString())
+                            if (cleanedContent.isNotBlank()) {
+                                chatRepository.insertMessage(
+                                    ChatMessage(
+                                        sessionId = sessionId,
+                                        role = "assistant",
+                                        content = cleanedContent,
+                                        tokensCount = finalMetrics.tokensGenerated,
+                                        tokensPerSecond = finalMetrics.tokensPerSecond,
+                                        generationDurationMs = finalMetrics.totalDurationMs,
+                                        timeToFirstTokenMs = finalMetrics.timeToFirstTokenMs,
+                                        modelTag = modelTag
+                                    )
                                 )
-                            )
-                            chatRepository.touchSession(sessionId)
+                                chatRepository.touchSession(sessionId)
+                            }
                         }
                     }
                 } catch (_: kotlinx.coroutines.CancellationException) {
@@ -573,19 +580,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             val evalDuration = (chunk.evalDuration ?: 1000000000L) / 1000000000f
                             val speed = if (evalDuration > 0.05f) evalTokens / evalDuration else 20f
 
-                            chatRepository.insertMessage(
-                                ChatMessage(
-                                    sessionId = sessionId,
-                                    role = "assistant",
-                                    content = accumulated.toString(),
-                                    tokensCount = evalTokens,
-                                    tokensPerSecond = (speed * 10).toInt() / 10f,
-                                    generationDurationMs = System.currentTimeMillis() - startTime,
-                                    timeToFirstTokenMs = ttft,
-                                    modelTag = "${model.name} [Ollama]"
+                            val cleanedOllama = ChatTemplateEngine.cleanModelResponse(accumulated.toString())
+                            if (cleanedOllama.isNotBlank()) {
+                                chatRepository.insertMessage(
+                                    ChatMessage(
+                                        sessionId = sessionId,
+                                        role = "assistant",
+                                        content = cleanedOllama,
+                                        tokensCount = evalTokens,
+                                        tokensPerSecond = (speed * 10).toInt() / 10f,
+                                        generationDurationMs = System.currentTimeMillis() - startTime,
+                                        timeToFirstTokenMs = ttft,
+                                        modelTag = "${model.name} [Ollama]"
+                                    )
                                 )
-                            )
-                            chatRepository.touchSession(sessionId)
+                                chatRepository.touchSession(sessionId)
+                            }
                             _generationState.value = ActiveGenerationState(isGenerating = false, isComputingFullResponse = false)
                         }
                     }

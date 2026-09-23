@@ -749,7 +749,7 @@ fun SettingsScreen(
                 Button(
                     onClick = onNavigateToBenchmark,
                     colors = ButtonDefaults.buttonColors(containerColor = ObsidianSurface),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(ObsidianBorder)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
