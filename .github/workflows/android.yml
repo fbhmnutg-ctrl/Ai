@@ -19,19 +19,9 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Create keystore file
-      run: |
-        mkdir -p ~/.android
-        keytool -genkey -v -keystore app/keystore.jks -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-        cp app/keystore.jks ~/.android/debug.keystore
-
     - name: Build APK with Gradle
       run: |
         gradle assembleDebug --no-daemon \
-          -Pandroid.injected.signing.store.file=$(pwd)/app/keystore.jks \
-          -Pandroid.injected.signing.store.password=android \
-          -Pandroid.injected.signing.key.alias=androiddebugkey \
-          -Pandroid.injected.signing.key.password=android \
           -Djava.awt.headless=true \
           -Dkotlin.compiler.execution.strategy=in-process \
           -Dksp.use.ksp2=true
