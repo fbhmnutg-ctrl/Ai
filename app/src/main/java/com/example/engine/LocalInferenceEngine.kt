@@ -111,15 +111,45 @@ class LocalInferenceEngine {
             currentUserPrompt = userPrompt
         )
 
-        // Generate intelligence and prompt response with active memory
-        val fullResponse = generateOfflineIntelligence(
-            userPrompt = userPrompt,
-            model = model,
-            systemPrompt = systemPrompt,
-            isArabic = isArabic,
-            isThinkEnabled = isIntegratedThinkEnabled,
-            messages = messages
-        )
+        // Execute real native Llama model inference when model file exists
+        val nativeResult: NativeInferenceResult? = if (hasValidFile && NativeLlamaBridge.isNativeAbiSupported()) {
+            NativeLlamaBridge.executeInference(
+                modelFilePath = resolvedFile!!.absolutePath,
+                prompt = formattedPrompt,
+                systemPrompt = "",
+                contextLength = offloadPlan.safeContextLength,
+                threads = offloadPlan.cpuThreads,
+                gpuLayers = offloadPlan.gpuOffloadLayers,
+                maxTokens = 2048,
+                stopTokens = ChatTemplateEngine.UNIFIED_STOP_TOKENS
+            )
+        } else null
+
+        val rawText = if (nativeResult != null && nativeResult.isNativeExecution && nativeResult.text.isNotBlank()) {
+            ChatTemplateEngine.cleanModelResponse(nativeResult.text)
+        } else {
+            generateOfflineIntelligence(
+                userPrompt = userPrompt,
+                model = model,
+                systemPrompt = systemPrompt,
+                isArabic = isArabic,
+                isThinkEnabled = isIntegratedThinkEnabled,
+                messages = messages
+            )
+        }
+
+        val fullResponse = if (rawText.isBlank()) {
+            generateOfflineIntelligence(
+                userPrompt = userPrompt,
+                model = model,
+                systemPrompt = systemPrompt,
+                isArabic = isArabic,
+                isThinkEnabled = isIntegratedThinkEnabled,
+                messages = messages
+            )
+        } else {
+            rawText
+        }
 
         // Tokenize text for real-time live streaming from speech start
         val tokens = tokenizeText(fullResponse)
