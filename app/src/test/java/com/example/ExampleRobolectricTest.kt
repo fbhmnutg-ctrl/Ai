@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.engine.QuantizationEngine
 import com.example.engine.QuantCategory
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -190,6 +191,23 @@ class ExampleRobolectricTest {
     val prompt = "Explain gravity"
     val formatted = com.example.engine.ChatTemplateEngine.formatPrompt(gammaArch, prompt)
     assertEquals("<start_of_turn>user\nExplain gravity<end_of_turn>\n<start_of_turn>model\n", formatted)
+  }
+
+  @Test
+  fun `imported gamma model parses metadata with GEMMA architecture`() {
+    val tempFile = File.createTempFile("gamma-2-2b-it-Q4_K_M", ".gguf")
+    tempFile.writeBytes(ByteArray(64)) // minimal mock file
+    
+    val parsedMeta = com.example.engine.GgufParser.parseFromFile(tempFile, "gamma-2-2b-it-Q4_K_M.gguf")
+    assertEquals("gemma", parsedMeta.architecture)
+    assertEquals("Q4_K_M", parsedMeta.quantization)
+
+    val customFile = File.createTempFile("imported_gamma_weights", ".bin")
+    val parsedCustom = com.example.engine.GgufParser.parseFromFile(customFile, "my_custom_gamma_weights.gguf")
+    assertEquals("gemma", parsedCustom.architecture)
+
+    tempFile.delete()
+    customFile.delete()
   }
 }
 

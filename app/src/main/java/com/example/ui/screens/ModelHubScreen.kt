@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -323,7 +324,7 @@ fun ModelHubScreen(
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
-                    GgufDetailRow("Architecture", m.architecture)
+                    GgufDetailRow("Architecture", m.architecture.uppercase())
                     GgufDetailRow("Quantization", m.quantization)
                     GgufDetailRow("Parameters", m.parameterCount)
                     GgufDetailRow("Size on Disk", String.format("%.2f GB", m.sizeBytes / (1024.0 * 1024.0 * 1024.0)))
@@ -332,6 +333,38 @@ fun ModelHubScreen(
                     GgufDetailRow("Source", m.source)
                     if (m.filePath != null) {
                         GgufDetailRow("Path", m.filePath)
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "Reassign Architecture Template:", color = TextMuted, fontSize = 10.sp)
+                    val commonArchitectures = listOf("gemma", "llama", "qwen2", "mistral", "deepseek", "phi3")
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(commonArchitectures) { archItem ->
+                            val isCurrent = m.architecture.equals(archItem, ignoreCase = true)
+                            Surface(
+                                modifier = Modifier.clickable {
+                                    if (!isCurrent) viewModel.updateModelArchitecture(m, archItem)
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isCurrent) NeonCyanSubtle else ObsidianSurface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (isCurrent) 1.dp else 0.5.dp,
+                                    if (isCurrent) NeonCyan else ObsidianBorder
+                                )
+                            ) {
+                                Text(
+                                    text = archItem.uppercase(),
+                                    color = if (isCurrent) NeonCyan else TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
                     }
                 }
             },

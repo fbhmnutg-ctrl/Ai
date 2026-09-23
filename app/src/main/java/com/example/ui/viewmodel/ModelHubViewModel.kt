@@ -79,10 +79,9 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
     fun importGgufFile(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
-            val rawName = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "imported-template"
-            val cleanName = if (rawName.endsWith(".gguf", ignoreCase = true)) rawName else "$rawName.gguf"
+            val displayName = GgufParser.getDisplayNameFromUri(context, uri)
             val modelsDir = File(context.filesDir, "models").apply { mkdirs() }
-            val targetFile = File(modelsDir, "uploaded_${System.currentTimeMillis()}_$cleanName")
+            val targetFile = File(modelsDir, "uploaded_${System.currentTimeMillis()}_$displayName")
 
             try {
                 context.contentResolver.openInputStream(uri)?.use { inStream ->
@@ -95,7 +94,7 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
             }
 
             val metadata = if (targetFile.exists() && targetFile.length() > 0) {
-                GgufParser.parseFromFile(targetFile, cleanName)
+                GgufParser.parseFromFile(targetFile, displayName)
             } else {
                 GgufParser.parseFromUri(context, uri)
             }
@@ -105,8 +104,8 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
             val modelId = "imported-" + (metadata.modelName.lowercase().replace(" ", "-").ifEmpty { "template" }) + "-" + (System.currentTimeMillis() % 10000)
             val entity = LocalModelEntity(
                 id = modelId,
-                name = metadata.modelName.ifEmpty { "Uploaded Template" },
-                filename = cleanName,
+                name = metadata.modelName.ifEmpty { displayName.substringBeforeLast('.') },
+                filename = displayName,
                 architecture = metadata.architecture,
                 quantization = metadata.quantization,
                 parameterCount = when {
@@ -123,13 +122,13 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
                 downloadProgress = 1.0f,
                 filePath = if (targetFile.exists()) targetFile.absolutePath else null,
                 source = "UPLOADED",
-                description = "Uploaded on-device template with ${metadata.layerCount} layers. Ready for offline inference.",
+                description = "Uploaded on-device template (${metadata.architecture.uppercase()}, ${metadata.quantization}) with ${metadata.layerCount} layers. Ready for offline inference.",
                 isFavorite = true,
                 lastUsedTimestamp = System.currentTimeMillis()
             )
 
             modelRepository.insertModel(entity)
-            _importStatusMessage.value = "Template '${entity.name}' imported successfully!"
+            _importStatusMessage.value = "Imported '${entity.name}' (Architecture: ${entity.architecture.uppercase()}, Quant: ${entity.quantization}) successfully!"
         }
     }
 
