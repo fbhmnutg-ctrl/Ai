@@ -8,6 +8,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,6 +63,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -73,9 +76,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,12 +93,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.data.local.entity.ChatMessage
 import com.example.data.local.entity.LocalModelEntity
+import com.example.engine.LocalInferenceEngine
+import kotlinx.coroutines.launch
 import com.example.ui.components.CodeBlockView
 import com.example.ui.components.EngineBadge
 import com.example.ui.components.GgufTag
@@ -142,12 +151,52 @@ fun ChatScreen(
     var showSessionsMenu by remember { mutableStateOf(false) }
     var showModelSelectorMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    var userManuallyScrolledUp by remember { mutableStateOf(false) }
 
-    // Auto-scroll when new messages arrive or while streaming
-    LaunchedEffect(messages.size, generationState.streamingContent) {
-        if (messages.isNotEmpty() || generationState.isGenerating) {
-            val target = (messages.size - 1).coerceAtLeast(0)
-            listState.animateScrollToItem(target)
+    val isAtBottom by remember {
+        derivedStateOf {
+            val totalItems = messages.size + (if (generationState.isGenerating) 1 else 0)
+            if (totalItems <= 1) true
+            else {
+                val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisible >= totalItems - 2
+            }
+        }
+    }
+
+    // Detect if user is manually scrolling up to inspect history
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            val totalItems = messages.size + (if (generationState.isGenerating) 1 else 0)
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            if (totalItems > 1 && lastVisible < totalItems - 2) {
+                userManuallyScrolledUp = true
+            } else if (lastVisible >= totalItems - 1) {
+                userManuallyScrolledUp = false
+            }
+        }
+    }
+
+    // Auto-scroll when new user message is submitted
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            val lastUserMsg = messages.lastOrNull()?.role == "user"
+            if (lastUserMsg) {
+                userManuallyScrolledUp = false
+            }
+            if (!userManuallyScrolledUp) {
+                val totalItems = messages.size + (if (generationState.isGenerating) 1 else 0)
+                listState.scrollToItem((totalItems - 1).coerceAtLeast(0))
+            }
+        }
+    }
+
+    // While streaming tokens, keep scrolled to bottom ONLY if user hasn't scrolled up
+    LaunchedEffect(generationState.tokensGenerated) {
+        if (generationState.isGenerating && !userManuallyScrolledUp) {
+            val totalItems = messages.size + 1
+            listState.scrollToItem((totalItems - 1).coerceAtLeast(0))
         }
     }
 
@@ -420,7 +469,6 @@ fun ChatScreen(
             if (messages.isEmpty() && !generationState.isGenerating) {
                 ChatEmptyState(
                     activeModel = activeModel,
-                    onPromptSelected = { viewModel.sendMessage(it) },
                     onNavigateToModels = onNavigateToModels
                 )
             } else {
@@ -438,6 +486,53 @@ fun ChatScreen(
                     if (generationState.isGenerating) {
                         item {
                             StreamingBubble(state = generationState, onStop = { viewModel.stopGeneration() })
+                        }
+                    }
+                }
+
+                // Floating Jump-to-Bottom badge when scrolled up
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = userManuallyScrolledUp && (generationState.isGenerating || !isAtBottom),
+                    enter = fadeIn() + slideInVertically { it / 2 },
+                    exit = fadeOut() + slideOutVertically { it / 2 },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 12.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = ObsidianCard,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.7f)),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.clickable {
+                            userManuallyScrolledUp = false
+                            coroutineScope.launch {
+                                val totalItems = messages.size + (if (generationState.isGenerating) 1 else 0)
+                                listState.animateScrollToItem((totalItems - 1).coerceAtLeast(0))
+                            }
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = if (generationState.isGenerating) {
+                                    "الرد يكتمل الآن (${generationState.tokensPerSecond} tok/s) • اضغط للمتابعة"
+                                } else {
+                                    "الانتقال لآخر الرسائل ↓"
+                                },
+                                color = NeonCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                     }
                 }
@@ -588,108 +683,66 @@ fun TopChatHeader(
 @Composable
 fun ChatEmptyState(
     activeModel: LocalModelEntity?,
-    onPromptSelected: (String) -> Unit,
     onNavigateToModels: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(20.dp),
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Hero Art Card
-        Surface(
+        // Minimalist sovereign core indicator
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp)),
-            color = ObsidianCard,
-            border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder)
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(ObsidianCard)
+                .border(1.dp, NeonCyan.copy(alpha = 0.4f), CircleShape),
+            contentAlignment = Alignment.Center
         ) {
-            Column {
-                Image(
-                    painter = painterResource(id = R.drawable.offline_ai_hero_1790116792480),
-                    contentDescription = "Local Neural Engine Banner",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(130.dp),
-                    contentScale = ContentScale.Crop
-                )
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Offline Neural Core",
-                            color = TextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        GgufTag(text = activeModel?.quantization ?: "Q4_K_M")
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Running sovereign AI models on-device without cloud dependency. Prompts and weights stay in your phone's memory.",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp
-                    )
-                }
-            }
+            Icon(
+                imageVector = Icons.Default.Memory,
+                contentDescription = null,
+                tint = NeonCyan,
+                modifier = Modifier.size(32.dp)
+            )
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = activeModel?.name ?: "Sovereign AI Engine",
+                color = TextPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            GgufTag(text = activeModel?.quantization ?: "Q4_K_M")
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = "TRY ASKING",
+            text = "معالجة محلية خاصة 100% • جاهز للمحادثة الفورية",
+            color = TextSecondary,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = "Zero cloud telemetry • All neural calculations on CPU",
             color = TextMuted,
             fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
-            modifier = Modifier.fillMaxWidth()
+            textAlign = TextAlign.Center
         )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        val promptSuggestions = listOf(
-            "Explain quantum superposition simply with an analogy",
-            "Write an optimized Python function to parse JSON safely",
-            "Solve this logic riddle: I speak without a mouth...",
-            "Give me a checklist for offline international travel"
-        )
-
-        promptSuggestions.forEach { prompt ->
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onPromptSelected(prompt) },
-                color = ObsidianSurface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = prompt,
-                        color = TextPrimary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = TextMuted,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -700,6 +753,7 @@ fun MessageItem(
 ) {
     val isUser = message.role == "user"
     val clipboardManager = LocalClipboardManager.current
+    val isArabic = LocalInferenceEngine.isArabicText(message.content)
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -717,7 +771,11 @@ fun MessageItem(
                     text = message.content,
                     color = Color(0xFFECFEFF),
                     fontSize = 14.sp,
-                    lineHeight = 20.sp,
+                    lineHeight = 21.sp,
+                    style = LocalTextStyle.current.copy(
+                        textDirection = TextDirection.ContentOrLtr,
+                        textAlign = if (isArabic) TextAlign.End else TextAlign.Start
+                    ),
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                 )
             }
@@ -811,12 +869,14 @@ fun FormattedAssistantContent(content: String) {
         val thinkContent = content.substring(thinkStart, thinkEnd).trim()
         val restContent = content.substring(thinkEnd + 8).trim()
 
-        val isDeepReasoning = thinkContent.contains("Deep Reasoning")
-        val isAmpr = thinkContent.contains("AMPR")
+        val isDeepReasoning = thinkContent.contains("Deep Reasoning") || thinkContent.contains("التفكير العميق")
+        val isAmpr = thinkContent.contains("AMPR") || thinkContent.contains("AMPR التكيفي")
+        val isArabicThink = LocalInferenceEngine.isArabicText(thinkContent)
+
         val title = when {
-            isDeepReasoning -> "Deep Reasoning Chain-of-Thought"
-            isAmpr -> "AMPR Multi-Path Trajectory"
-            else -> "Reasoning Process"
+            isDeepReasoning -> if (isArabicThink) "مسار التفكير العميق (Chain-of-Thought)" else "Deep Reasoning Chain-of-Thought"
+            isAmpr -> if (isArabicThink) "مسارات AMPR التكيفية (Adaptive Paths)" else "AMPR Multi-Path Trajectory"
+            else -> if (isArabicThink) "خطوات التحليل والتفكير" else "Reasoning Process"
         }
         val themeColor = if (isAmpr) NeonCyan else VioletNeural
 
@@ -864,8 +924,12 @@ fun FormattedAssistantContent(content: String) {
                         text = thinkContent,
                         color = TextSecondary,
                         fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        lineHeight = 17.sp
+                        fontFamily = if (isArabicThink) FontFamily.Default else FontFamily.Monospace,
+                        lineHeight = 18.sp,
+                        style = LocalTextStyle.current.copy(
+                            textDirection = TextDirection.ContentOrLtr,
+                            textAlign = if (isArabicThink) TextAlign.End else TextAlign.Start
+                        )
                     )
                 }
             }
@@ -880,6 +944,7 @@ fun FormattedAssistantContent(content: String) {
 
 @Composable
 fun RenderMarkdownContent(text: String) {
+    val isArabic = LocalInferenceEngine.isArabicText(text)
     // If contains code fences
     if (text.contains("```")) {
         val parts = text.split("```")
@@ -892,11 +957,16 @@ fun RenderMarkdownContent(text: String) {
                     val codeContent = if (lines.isNotEmpty() && lines.first() == lang) lines.drop(1).joinToString("\n") else part
                     CodeBlockView(code = codeContent.trim(), language = lang)
                 } else if (part.isNotBlank()) {
+                    val partIsArabic = LocalInferenceEngine.isArabicText(part)
                     Text(
                         text = part.trim(),
                         color = TextPrimary,
                         fontSize = 14.sp,
-                        lineHeight = 21.sp
+                        lineHeight = 22.sp,
+                        style = LocalTextStyle.current.copy(
+                            textDirection = TextDirection.ContentOrLtr,
+                            textAlign = if (partIsArabic) TextAlign.End else TextAlign.Start
+                        )
                     )
                 }
             }
@@ -906,7 +976,11 @@ fun RenderMarkdownContent(text: String) {
             text = text,
             color = TextPrimary,
             fontSize = 14.sp,
-            lineHeight = 21.sp
+            lineHeight = 22.sp,
+            style = LocalTextStyle.current.copy(
+                textDirection = TextDirection.ContentOrLtr,
+                textAlign = if (isArabic) TextAlign.End else TextAlign.Start
+            )
         )
     }
 }
@@ -927,6 +1001,7 @@ fun StreamingBubble(
         ),
         label = "cursor_blink"
     )
+    val isArabic = LocalInferenceEngine.isArabicText(state.streamingContent)
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -948,7 +1023,7 @@ fun StreamingBubble(
                             .background(NeonCyan.copy(alpha = alpha))
                     )
                     Text(
-                        text = "Generating on CPU...",
+                        text = if (isArabic) "جاري التوليد على المعالج (CPU)..." else "Generating on CPU...",
                         color = NeonCyan,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
@@ -965,17 +1040,21 @@ fun StreamingBubble(
                 ) {
                     Icon(Icons.Default.Stop, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Stop", color = Color.White, fontSize = 11.sp)
+                    Text(if (isArabic) "إيقاف" else "Stop", color = Color.White, fontSize = 11.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = state.streamingContent.ifEmpty { "Evaluating prompt..." },
+                text = state.streamingContent.ifEmpty { if (isArabic) "جاري تحليل المدخلات محلياً..." else "Evaluating prompt..." },
                 color = TextPrimary,
                 fontSize = 14.sp,
-                lineHeight = 20.sp
+                lineHeight = 22.sp,
+                style = LocalTextStyle.current.copy(
+                    textDirection = TextDirection.ContentOrLtr,
+                    textAlign = if (isArabic) TextAlign.End else TextAlign.Start
+                )
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1033,11 +1112,14 @@ fun ChatInputBar(
                 onValueChange = onTextChanged,
                 placeholder = {
                     Text(
-                        text = if (isGenerating) "Generating response..." else "Message local neural model...",
+                        text = if (isGenerating) "النموذج يولد الرد حالياً..." else "اسأل النموذج المحلي أو اكتب رسالة...",
                         color = TextMuted,
                         fontSize = 13.sp
                     )
                 },
+                textStyle = LocalTextStyle.current.copy(
+                    textDirection = TextDirection.ContentOrLtr
+                ),
                 modifier = Modifier
                     .weight(1f)
                     .testTag("chat_input_field"),

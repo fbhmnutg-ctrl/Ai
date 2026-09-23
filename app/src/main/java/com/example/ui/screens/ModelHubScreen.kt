@@ -195,39 +195,13 @@ fun ModelHubScreen(
             }
         }
 
-        val hfTemplateModel = allModels.firstOrNull { it.id == ModelHubViewModel.HF_TEST_TEMPLATE_ID }
-            ?: ModelHubViewModel.HF_TEST_TEMPLATE
-
-        val showHfHeroCard = (searchQuery.isBlank() ||
-                hfTemplateModel.name.contains(searchQuery, ignoreCase = true) ||
-                "huggingface".contains(searchQuery, ignoreCase = true) ||
-                "test".contains(searchQuery, ignoreCase = true) ||
-                "template".contains(searchQuery, ignoreCase = true)) &&
-                when (selectedFilter) {
-                    ModelFilter.ALL -> true
-                    ModelFilter.INSTALLED -> hfTemplateModel.isDownloaded
-                    ModelFilter.CATALOG -> !hfTemplateModel.isDownloaded
-                }
-
         // Models List
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (showHfHeroCard) {
-                item(key = "hf_test_template_hero") {
-                    HuggingFaceTemplateHeroCard(
-                        model = hfTemplateModel,
-                        hardwareInfo = hardwareInfo,
-                        onDownload = { viewModel.startModelDownload(hfTemplateModel) },
-                        onCancelDownload = { viewModel.cancelDownload(hfTemplateModel.id) },
-                        onStartToTry = { onModelSelectedForChat(hfTemplateModel) }
-                    )
-                }
-            }
-
-            items(filteredModels.filter { !showHfHeroCard || it.id != ModelHubViewModel.HF_TEST_TEMPLATE_ID }, key = { it.id }) { model ->
+            items(filteredModels, key = { it.id }) { model ->
                 ModelCard(
                     model = model,
                     hardwareInfo = hardwareInfo,
@@ -424,233 +398,6 @@ fun HardwareStatusHeader(
 }
 
 @Composable
-fun HuggingFaceTemplateHeroCard(
-    model: LocalModelEntity,
-    hardwareInfo: DeviceHardwareInfo,
-    onDownload: () -> Unit,
-    onCancelDownload: () -> Unit,
-    onStartToTry: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF141923),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9D00).copy(alpha = 0.5f))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Header Row: Hugging Face branding & title
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = "🤗", fontSize = 24.sp)
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "Hugging Face Test Template",
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            HuggingFaceBadge(text = "huggingface.co")
-                        }
-                        Text(
-                            text = "SmolLM2 135M Instruct (GGUF)",
-                            color = Color(0xFFFFB347),
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Very lightweight test template downloaded from the Hugging Face website. Designed for quick mobile CPU testing with minimal storage (~85 MB) and instant token generation speed.",
-                color = TextSecondary,
-                fontSize = 12.sp,
-                lineHeight = 17.sp
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Specs badges
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                GgufTag(text = model.quantization, color = Color(0xFFFFB347))
-                GgufTag(text = "135M Params", color = NeonCyan)
-                GgufTag(text = "85 MB", color = EmeraldGlow)
-                GgufTag(text = "220 MB RAM", color = TextSecondary)
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Action section: Downloading (Loading bar) vs Installed ("Start to try") vs Not Downloaded
-            if (model.downloadProgress > 0f && model.downloadProgress < 1.0f) {
-                // A loading bar appears!
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp,
-                                color = Color(0xFFFF9D00)
-                            )
-                            Text(
-                                text = "Downloading from huggingface.co... ${(model.downloadProgress * 100).toInt()}%",
-                                color = Color(0xFFFFB347),
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        TextButton(
-                            onClick = onCancelDownload,
-                            contentPadding = PaddingValues(0.dp)
-                        ) {
-                            Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp)
-                        }
-                    }
-
-                    // Loading bar
-                    LinearProgressIndicator(
-                        progress = { model.downloadProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = Color(0xFFFF9D00),
-                        trackColor = ObsidianBorder
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = String.format("%.1f MB / 85.0 MB", model.downloadProgress * 85.0f),
-                            color = TextMuted,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "Speed: 14.8 MB/s • Low Latency",
-                            color = EmeraldGlow,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-            } else if (model.isDownloaded) {
-                // After loading is complete: A "Start to try" button appears!
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            tint = EmeraldGlow,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "Download complete",
-                            color = EmeraldGlow,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Button(
-                        onClick = onStartToTry,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
-                        modifier = Modifier.testTag("start_to_try_button")
-                    ) {
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = Color(0xFF00363D),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Start to try",
-                            color = Color(0xFF00363D),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            } else {
-                // Not downloaded yet: Download button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Lightweight test download (85 MB)",
-                        color = TextMuted,
-                        fontSize = 11.sp
-                    )
-
-                    Button(
-                        onClick = onDownload,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9D00).copy(alpha = 0.2f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9D00)),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
-                        modifier = Modifier.testTag("download_hf_template_button")
-                    ) {
-                        Icon(
-                            Icons.Default.Download,
-                            contentDescription = null,
-                            tint = Color(0xFFFFB347),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Download Test Template",
-                            color = Color(0xFFFFB347),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun ModelCard(
     model: LocalModelEntity,
     hardwareInfo: DeviceHardwareInfo,
@@ -661,7 +408,7 @@ fun ModelCard(
     onInspect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isHf = model.source == "HUGGING_FACE" || model.id == ModelHubViewModel.HF_TEST_TEMPLATE_ID
+    val isHf = model.source == "HUGGING_FACE"
 
     Surface(
         modifier = modifier.fillMaxWidth(),

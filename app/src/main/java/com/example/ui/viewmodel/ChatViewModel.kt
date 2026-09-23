@@ -240,8 +240,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopGeneration() {
-        activeJob?.cancel()
+        val job = activeJob
         activeJob = null
+        job?.cancel()
 
         val currentStream = _generationState.value.streamingContent
         val sId = _currentSessionId.value
@@ -249,19 +250,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val model = _activeModel.value
             val metrics = _generationState.value
             viewModelScope.launch {
-                chatRepository.insertMessage(
-                    ChatMessage(
-                        sessionId = sId,
-                        role = "assistant",
-                        content = currentStream + " [Stopped]",
-                        tokensCount = metrics.tokensGenerated,
-                        tokensPerSecond = metrics.tokensPerSecond,
-                        generationDurationMs = metrics.durationMs,
-                        timeToFirstTokenMs = metrics.timeToFirstTokenMs,
-                        modelTag = model?.name ?: "Local GGUF"
+                try {
+                    chatRepository.insertMessage(
+                        ChatMessage(
+                            sessionId = sId,
+                            role = "assistant",
+                            content = currentStream.trim() + " ⏹",
+                            tokensCount = metrics.tokensGenerated,
+                            tokensPerSecond = metrics.tokensPerSecond,
+                            generationDurationMs = metrics.durationMs,
+                            timeToFirstTokenMs = metrics.timeToFirstTokenMs,
+                            modelTag = model?.name ?: "Local GGUF"
+                        )
                     )
-                )
-                chatRepository.touchSession(sId)
+                    chatRepository.touchSession(sId)
+                } catch (_: Exception) {
+                    // Safe ignore
+                }
             }
         }
 
@@ -334,87 +339,93 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             if (!isOllama) {
                 // Local GGUF Engine
-                localEngine.generateLocalStream(
-                    model = model,
-                    messages = _currentMessages.value,
-                    systemPrompt = _systemPrompt.value,
-                    temperature = _temperature.value,
-                    topP = _topP.value,
-                    numThreads = _cpuThreads.value,
-                    isAmprEnabled = isAmprEnabled.value,
-                    amprKPaths = settingsManager.amprKPaths.value,
-                    isDeepReasoningEnabled = isDeepReasoningEnabled.value,
-                    deepReasoningEffort = settingsManager.deepReasoningEffort.value
-                ).catch { e ->
-                    accumulated.append("\n\n*Local engine error: ${e.localizedMessage}*")
-                    _generationState.value = _generationState.value.copy(
-                        isGenerating = false,
-                        streamingContent = accumulated.toString()
-                    )
-                }.collect { chunk ->
-                    if (!chunk.isFinished) {
-                        if (tokensCount == 0) {
-                            ttft = System.currentTimeMillis() - startTime
-                        }
-                        tokensCount++
-                        accumulated.append(chunk.token)
-                        val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
-                        val currentSpeed = if (elapsedSec > 0.1f) tokensCount / elapsedSec else 20f
-
-                        _generationState.value = _generationState.value.copy(
-                            isGenerating = true,
-                            streamingContent = accumulated.toString(),
-                            tokensGenerated = tokensCount,
-                            tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
-                            timeToFirstTokenMs = ttft,
-                            durationMs = System.currentTimeMillis() - startTime,
-                            peakRamMb = model.requiredRamMb
-                        )
-                    } else {
-                        // Finished
-                        val finalMetrics = chunk.metrics ?: GenerationMetrics(
-                            tokensGenerated = tokensCount,
-                            tokensPerSecond = 20.5f,
-                            timeToFirstTokenMs = ttft,
-                            totalDurationMs = System.currentTimeMillis() - startTime,
-                            peakRamUsageMb = model.requiredRamMb
-                        )
-
-                        _generationState.value = _generationState.value.copy(
-                            isGenerating = false,
-                            isNativeEngine = finalMetrics.isNativeEngine,
-                            engineDescription = finalMetrics.engineDescription
-                        )
-
-                        val modelTag = when {
-                            finalMetrics.isDeepReasoningActive -> {
-                                "🔮 ${model.name} (${model.quantization} • Deep Reasoning)"
-                            }
-                            finalMetrics.isAmprActive -> {
-                                "🧠 ${model.name} (${model.quantization} • AMPR K=${finalMetrics.amprKPaths} H(S)=${finalMetrics.amprEntropyBits})"
-                            }
-                            finalMetrics.isNativeEngine -> {
-                                "⚡ ${model.name} (${model.quantization} • Native)"
-                            }
-                            else -> {
-                                "${model.name} (${model.quantization})"
-                            }
-                        }
-
-                        chatRepository.insertMessage(
-                            ChatMessage(
-                                sessionId = sessionId,
-                                role = "assistant",
-                                content = accumulated.toString(),
-                                tokensCount = finalMetrics.tokensGenerated,
-                                tokensPerSecond = finalMetrics.tokensPerSecond,
-                                generationDurationMs = finalMetrics.totalDurationMs,
-                                timeToFirstTokenMs = finalMetrics.timeToFirstTokenMs,
-                                modelTag = modelTag
+                try {
+                    localEngine.generateLocalStream(
+                        model = model,
+                        messages = _currentMessages.value,
+                        systemPrompt = _systemPrompt.value,
+                        temperature = _temperature.value,
+                        topP = _topP.value,
+                        numThreads = _cpuThreads.value,
+                        isAmprEnabled = isAmprEnabled.value,
+                        amprKPaths = settingsManager.amprKPaths.value,
+                        isDeepReasoningEnabled = isDeepReasoningEnabled.value,
+                        deepReasoningEffort = settingsManager.deepReasoningEffort.value
+                    ).catch { e ->
+                        if (e !is kotlinx.coroutines.CancellationException) {
+                            accumulated.append("\n\n*Local engine error: ${e.localizedMessage}*")
+                            _generationState.value = _generationState.value.copy(
+                                isGenerating = false,
+                                streamingContent = accumulated.toString()
                             )
-                        )
-                        chatRepository.touchSession(sessionId)
+                        }
+                    }.collect { chunk ->
+                        if (!chunk.isFinished) {
+                            if (tokensCount == 0) {
+                                ttft = System.currentTimeMillis() - startTime
+                            }
+                            tokensCount++
+                            accumulated.append(chunk.token)
+                            val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
+                            val currentSpeed = if (elapsedSec > 0.1f) tokensCount / elapsedSec else 20f
+
+                            _generationState.value = _generationState.value.copy(
+                                isGenerating = true,
+                                streamingContent = accumulated.toString(),
+                                tokensGenerated = tokensCount,
+                                tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
+                                timeToFirstTokenMs = ttft,
+                                durationMs = System.currentTimeMillis() - startTime,
+                                peakRamMb = model.requiredRamMb
+                            )
+                        } else {
+                            // Finished
+                            val finalMetrics = chunk.metrics ?: GenerationMetrics(
+                                tokensGenerated = tokensCount,
+                                tokensPerSecond = 20.5f,
+                                timeToFirstTokenMs = ttft,
+                                totalDurationMs = System.currentTimeMillis() - startTime,
+                                peakRamUsageMb = model.requiredRamMb
+                            )
+
+                            _generationState.value = _generationState.value.copy(
+                                isGenerating = false,
+                                isNativeEngine = finalMetrics.isNativeEngine,
+                                engineDescription = finalMetrics.engineDescription
+                            )
+
+                            val modelTag = when {
+                                finalMetrics.isDeepReasoningActive -> {
+                                    "🔮 ${model.name} (${model.quantization} • Deep Reasoning)"
+                                }
+                                finalMetrics.isAmprActive -> {
+                                    "🧠 ${model.name} (${model.quantization} • AMPR K=${finalMetrics.amprKPaths} H(S)=${finalMetrics.amprEntropyBits})"
+                                }
+                                finalMetrics.isNativeEngine -> {
+                                    "⚡ ${model.name} (${model.quantization} • Native)"
+                                }
+                                else -> {
+                                    "${model.name} (${model.quantization})"
+                                }
+                            }
+
+                            chatRepository.insertMessage(
+                                ChatMessage(
+                                    sessionId = sessionId,
+                                    role = "assistant",
+                                    content = accumulated.toString(),
+                                    tokensCount = finalMetrics.tokensGenerated,
+                                    tokensPerSecond = finalMetrics.tokensPerSecond,
+                                    generationDurationMs = finalMetrics.totalDurationMs,
+                                    timeToFirstTokenMs = finalMetrics.timeToFirstTokenMs,
+                                    modelTag = modelTag
+                                )
+                            )
+                            chatRepository.touchSession(sessionId)
+                        }
                     }
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // Handled gracefully in stopGeneration
                 }
             } else {
                 // Ollama Host Stream

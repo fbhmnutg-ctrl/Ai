@@ -231,31 +231,6 @@ fun UploadedTemplatesScreen(
                         fontWeight = FontWeight.Medium
                     )
                 }
-
-                // Quick Test Template Button
-                OutlinedButton(
-                    onClick = { viewModel.importQuickTestTemplate() },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = VioletNeural),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(ObsidianBorder)),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .height(42.dp)
-                        .testTag("quick_test_template_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Speed,
-                        contentDescription = null,
-                        tint = VioletNeural,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Test",
-                        color = VioletNeural,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
             }
 
             // Model Count & Overview Banner
@@ -288,8 +263,7 @@ fun UploadedTemplatesScreen(
             if (uploadedModels.isEmpty()) {
                 UploadedTemplatesEmptyState(
                     onImportClick = { filePickerLauncher.launch("*/*") },
-                    onAddTemplateClick = { showAddCustomDialog = true },
-                    onLoadTestClick = { viewModel.importQuickTestTemplate() }
+                    onAddTemplateClick = { showAddCustomDialog = true }
                 )
             } else {
                 LazyColumn(
@@ -355,7 +329,6 @@ fun UploadedTemplatesScreen(
 fun UploadedTemplatesEmptyState(
     onImportClick: () -> Unit,
     onAddTemplateClick: () -> Unit,
-    onLoadTestClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -393,7 +366,7 @@ fun UploadedTemplatesEmptyState(
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = "This page stores models and templates imported from your phone or external links. When you start the application, it begins empty. Import a GGUF file or add a template to load on-device models.",
+            text = "This page stores models and templates imported from your phone or external links. Import a GGUF file or add a model link to load on-device models.",
             color = TextSecondary,
             fontSize = 12.sp,
             lineHeight = 18.sp,
@@ -435,21 +408,6 @@ fun UploadedTemplatesEmptyState(
                 Icon(Icons.Default.Add, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Add Custom Template", color = TextPrimary, fontSize = 13.sp)
-            }
-
-            OutlinedButton(
-                onClick = onLoadTestClick,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = VioletNeural),
-                border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(ObsidianBorder)),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(46.dp)
-                    .testTag("empty_state_load_test_button")
-            ) {
-                Icon(Icons.Default.Speed, contentDescription = null, tint = VioletNeural, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Load SmolLM2 Test Template (135M)", color = VioletNeural, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             }
         }
     }

@@ -57,35 +57,6 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
     private val _importStatusMessage = MutableStateFlow<String?>(null)
     val importStatusMessage: StateFlow<String?> = _importStatusMessage.asStateFlow()
 
-    companion object {
-        const val HF_TEST_TEMPLATE_ID = "hf-smollm2-135m-test"
-        val HF_TEST_TEMPLATE = LocalModelEntity(
-            id = HF_TEST_TEMPLATE_ID,
-            name = "SmolLM2 135M (Hugging Face)",
-            filename = "SmolLM2-135M-Instruct-Q4_K_M.gguf",
-            architecture = "llama",
-            quantization = "Q4_K_M",
-            parameterCount = "135M",
-            sizeBytes = 89128960L, // ~85 MB
-            requiredRamMb = 220,
-            contextLength = 2048,
-            isDownloaded = false,
-            downloadProgress = 0f,
-            source = "HUGGING_FACE",
-            description = "Ultra-lightweight test template from Hugging Face website (huggingface.co/HuggingFaceTB/SmolLM2-135M). Designed for fast mobile CPU testing and instant evaluation.",
-            isFavorite = true
-        )
-    }
-
-    init {
-        viewModelScope.launch {
-            val existing = modelRepository.getModelByIdDirect(HF_TEST_TEMPLATE_ID)
-            if (existing == null) {
-                modelRepository.insertModel(HF_TEST_TEMPLATE)
-            }
-        }
-    }
-
     private val downloadJobs = mutableMapOf<String, Job>()
     private val modelDownloader = com.example.data.remote.RealModelDownloader(application)
 
@@ -207,32 +178,6 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
             )
             modelRepository.insertModel(entity)
             _importStatusMessage.value = "Template '$name' added to Uploaded Templates."
-        }
-    }
-
-    fun importQuickTestTemplate() {
-        viewModelScope.launch {
-            val testId = "imported-smollm2-test-" + (System.currentTimeMillis() % 10000)
-            val testEntity = LocalModelEntity(
-                id = testId,
-                name = "Uploaded SmolLM2 135M Template",
-                filename = "SmolLM2-135M-Instruct-Q4_K_M.gguf",
-                architecture = "llama",
-                quantization = "Q4_K_M",
-                parameterCount = "135M",
-                sizeBytes = 89128960L,
-                requiredRamMb = 220,
-                contextLength = 2048,
-                isDownloaded = true,
-                downloadProgress = 1.0f,
-                downloadUrl = "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf",
-                source = "UPLOADED",
-                description = "Verified lightweight uploaded template. 100% on-device CPU execution via llama.cpp.",
-                isFavorite = true,
-                lastUsedTimestamp = System.currentTimeMillis()
-            )
-            modelRepository.insertModel(testEntity)
-            _importStatusMessage.value = "Test template added to Uploaded Templates!"
         }
     }
 

@@ -185,33 +185,6 @@ abstract class AppDatabase : RoomDatabase() {
                 )
 
                 modelDao.insertModels(initialModels)
-
-                // Create initial welcoming chat session
-                val initialSession = ChatSession(
-                    title = "Offline AI Assistant",
-                    modelId = "llama-3.2-1b-instruct-q4",
-                    modelName = "Llama 3.2 1B Instruct",
-                    engineType = "LOCAL_GGUF",
-                    systemPrompt = "You are a private, sovereign AI running 100% locally on this device via GGUF neural weights.",
-                    temperature = 0.7f,
-                    topP = 0.9f,
-                    contextLength = 4096
-                )
-                val sessionId = chatDao.insertSession(initialSession)
-
-                // Welcome message
-                chatDao.insertMessage(
-                    ChatMessage(
-                        sessionId = sessionId,
-                        role = "assistant",
-                        content = "Hello! I am running 100% locally on your device via **GGUF** quantized neural weights. No internet connection is needed for inference, and your data never leaves your device.\n\nYou can also connect to your local **Ollama** server or import custom `.gguf` models at any time!",
-                        tokensCount = 52,
-                        tokensPerSecond = 22.4f,
-                        generationDurationMs = 2320L,
-                        timeToFirstTokenMs = 110L,
-                        modelTag = "Llama 3.2 1B (Q4_K_M)"
-                    )
-                )
             }
         }
     }
