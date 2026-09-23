@@ -305,6 +305,9 @@ fun HuggingFaceScreen(
                             onAddToHub = {
                                 viewModel.addModelToLocalHub(hfModel)
                             },
+                            onDirectDownload = {
+                                viewModel.downloadDirectlyFromHf(hfModel)
+                            },
                             onCopyId = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("HuggingFace Model ID", hfModel.id)
@@ -329,6 +332,10 @@ fun HuggingFaceScreen(
                 onAddWithQuant = { quant ->
                     viewModel.addModelToLocalHub(model, quant)
                     viewModel.inspectModel(null)
+                },
+                onDirectDownloadWithQuant = { quant ->
+                    viewModel.downloadDirectlyFromHf(model, quant)
+                    viewModel.inspectModel(null)
                 }
             )
         }
@@ -347,6 +354,7 @@ fun HuggingFaceModelCard(
     model: HuggingFaceModel,
     onInspect: () -> Unit,
     onAddToHub: () -> Unit,
+    onDirectDownload: () -> Unit,
     onCopyId: () -> Unit,
     onOpenHf: () -> Unit,
     modifier: Modifier = Modifier
@@ -526,7 +534,7 @@ fun HuggingFaceModelCard(
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
@@ -537,27 +545,28 @@ fun HuggingFaceModelCard(
                         ),
                         border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Text("Quants", fontSize = 12.sp)
+                        Text("Quants", fontSize = 11.sp)
                     }
 
                     Button(
-                        onClick = onAddToHub,
+                        onClick = onDirectDownload,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = devTheme.primary,
-                            contentColor = Color(0xFF00363D)
+                            containerColor = Color(0xFF10B981),
+                            contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("direct_download_btn_${model.id}")
                     ) {
                         Icon(
-                            Icons.Default.Add,
+                            Icons.Default.Download,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add to Hub", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Download GGUF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -569,7 +578,8 @@ fun HuggingFaceModelCard(
 fun HuggingFaceInspectDialog(
     model: HuggingFaceModel,
     onDismiss: () -> Unit,
-    onAddWithQuant: (String) -> Unit
+    onAddWithQuant: (String) -> Unit,
+    onDirectDownloadWithQuant: (String) -> Unit = {}
 ) {
     val devTheme = LocalDevTheme.current
     var selectedQuant by remember { mutableStateOf("Q4_K_M") }
@@ -662,11 +672,33 @@ fun HuggingFaceInspectDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = { onAddWithQuant(selectedQuant) },
-                colors = ButtonDefaults.buttonColors(containerColor = devTheme.primary)
-            ) {
-                Text("Add to Hub ($selectedQuant)", color = Color(0xFF00363D), fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    onClick = { onAddWithQuant(selectedQuant) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = devTheme.bg,
+                        contentColor = devTheme.textPrimary
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Add Only", fontSize = 11.sp)
+                }
+
+                Button(
+                    onClick = { onDirectDownloadWithQuant(selectedQuant) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Direct Download ($selectedQuant)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
             }
         },
         dismissButton = {
