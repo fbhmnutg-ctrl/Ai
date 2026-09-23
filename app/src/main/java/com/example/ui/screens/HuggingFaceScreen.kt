@@ -48,12 +48,14 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,11 +88,14 @@ fun HuggingFaceScreen(
     val devTheme = LocalDevTheme.current
     val context = LocalContext.current
     val models by viewModel.models.collectAsStateWithLifecycle()
+    val localModels by viewModel.localModels.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val selectedClass by viewModel.selectedClass.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
     val inspectingModel by viewModel.inspectingHfModel.collectAsStateWithLifecycle()
+
+    val activeDownloadingModel = localModels.firstOrNull { it.downloadProgress in 0.001f..0.999f }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -258,6 +263,66 @@ fun HuggingFaceScreen(
                 }
             }
 
+            // Top Progress Bar for Loading or Downloads
+            if (isLoading || activeDownloadingModel != null) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (activeDownloadingModel != null) {
+                        LinearProgressIndicator(
+                            progress = activeDownloadingModel.downloadProgress.coerceAtLeast(0.02f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp),
+                            color = Color(0xFF10B981),
+                            trackColor = devTheme.border
+                        )
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF10B981).copy(alpha = 0.12f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        color = Color(0xFF10B981),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        text = "Downloading '${activeDownloadingModel.name}' (${(activeDownloadingModel.downloadProgress * 100).toInt()}%)",
+                                        color = Color(0xFF10B981),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { viewModel.cancelDownload(activeDownloadingModel.id) },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp),
+                            color = devTheme.primary,
+                            trackColor = devTheme.border
+                        )
+                    }
+                }
+            }
+
             // Model List
             if (models.isEmpty() && !isLoading) {
                 Box(
@@ -299,14 +364,21 @@ fun HuggingFaceScreen(
                     }
 
                     items(models, key = { it.id }) { hfModel ->
+                        val modelId = "hf-" + hfModel.id.replace('/', '-').lowercase()
+                        val matchedLocalModel = localModels.find { it.id == modelId || (it.downloadUrl != null && it.downloadUrl.contains(hfModel.id, ignoreCase = true)) }
+
                         HuggingFaceModelCard(
                             model = hfModel,
+                            localModel = matchedLocalModel,
                             onInspect = { viewModel.inspectModel(hfModel) },
                             onAddToHub = {
                                 viewModel.addModelToLocalHub(hfModel)
                             },
                             onDirectDownload = {
                                 viewModel.downloadDirectlyFromHf(hfModel)
+                            },
+                            onCancelDownload = {
+                                matchedLocalModel?.let { viewModel.cancelDownload(it.id) }
                             },
                             onCopyId = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -352,19 +424,27 @@ fun HuggingFaceScreen(
 @Composable
 fun HuggingFaceModelCard(
     model: HuggingFaceModel,
+    localModel: com.example.data.local.entity.LocalModelEntity? = null,
     onInspect: () -> Unit,
     onAddToHub: () -> Unit,
     onDirectDownload: () -> Unit,
+    onCancelDownload: (() -> Unit)? = null,
     onCopyId: () -> Unit,
     onOpenHf: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val devTheme = LocalDevTheme.current
+    val isDownloading = localModel != null && localModel.downloadProgress in 0.001f..0.999f
+    val isInstalled = localModel?.isDownloaded == true
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .border(0.5.dp, devTheme.border, RoundedCornerShape(12.dp))
+            .border(
+                0.5.dp,
+                if (isDownloading) Color(0xFF10B981) else devTheme.border,
+                RoundedCornerShape(12.dp)
+            )
             .testTag("hf_model_card_${model.id}"),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = devTheme.surface)
@@ -414,7 +494,20 @@ fun HuggingFaceModelCard(
                         )
                     }
 
-                    if (model.hasGguf) {
+                    if (isInstalled) {
+                        Surface(
+                            color = Color(0xFF10B981).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "INSTALLED",
+                                color = Color(0xFF10B981),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else if (model.hasGguf) {
                         Surface(
                             color = Color(0xFF10B981).copy(alpha = 0.15f),
                             shape = RoundedCornerShape(6.dp)
@@ -498,6 +591,65 @@ fun HuggingFaceModelCard(
                 }
             }
 
+            // Live Download Progress Bar Block
+            if (isDownloading && localModel != null) {
+                Surface(
+                    color = Color(0xFF10B981).copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF10B981).copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    color = Color(0xFF10B981),
+                                    strokeWidth = 2.dp
+                                )
+                                Text(
+                                    text = "Downloading GGUF... ${(localModel.downloadProgress * 100).toInt()}%",
+                                    color = Color(0xFF10B981),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            if (onCancelDownload != null) {
+                                Button(
+                                    onClick = onCancelDownload,
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.15f)),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = localModel.downloadProgress.coerceAtLeast(0.02f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = Color(0xFF10B981),
+                            trackColor = devTheme.border
+                        )
+                    }
+                }
+            }
+
             // Action Buttons Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -550,23 +702,40 @@ fun HuggingFaceModelCard(
                         Text("Quants", fontSize = 11.sp)
                     }
 
-                    Button(
-                        onClick = onDirectDownload,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF10B981),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.testTag("direct_download_btn_${model.id}")
-                    ) {
-                        Icon(
-                            Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Download GGUF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    if (isInstalled) {
+                        Surface(
+                            color = Color(0xFF10B981).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF10B981))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
+                                Text("In Hub", color = Color(0xFF10B981), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else if (!isDownloading) {
+                        Button(
+                            onClick = onDirectDownload,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("direct_download_btn_${model.id}")
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Download GGUF", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

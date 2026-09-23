@@ -201,6 +201,50 @@ fun ModelHubScreen(
                     )
                 )
             }
+
+            val activeDownloadingHubModel = allModels.firstOrNull { it.downloadProgress in 0.001f..0.999f || (!it.isDownloaded && it.downloadProgress > 0f) }
+            if (activeDownloadingHubModel != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = NeonCyanSubtle,
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = NeonCyan, strokeWidth = 2.dp)
+                                Text(
+                                    text = "Downloading '${activeDownloadingHubModel.name}' (${(activeDownloadingHubModel.downloadProgress * 100).toInt()}%)",
+                                    color = NeonCyan,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            TextButton(
+                                onClick = { viewModel.cancelDownload(activeDownloadingHubModel.id) },
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = activeDownloadingHubModel.downloadProgress.coerceAtLeast(0.02f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = NeonCyan,
+                            trackColor = ObsidianBorder
+                        )
+                    }
+                }
+            }
         }
 
         // Models List
@@ -565,7 +609,7 @@ fun HardwareStatusHeader(
             Spacer(modifier = Modifier.height(6.dp))
 
             LinearProgressIndicator(
-                progress = { hardwareInfo.usedRamPercent / 100f },
+                progress = hardwareInfo.usedRamPercent / 100f,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)
@@ -701,7 +745,7 @@ fun ModelCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Action Row
-            if (model.downloadProgress > 0f && model.downloadProgress < 1.0f) {
+            if ((model.downloadProgress > 0f && model.downloadProgress < 1.0f) || (!model.isDownloaded && model.downloadProgress > 0f)) {
                 // Downloading state: A loading bar appears!
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(
@@ -709,29 +753,40 @@ fun ModelCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = if (isHf) {
-                                "Downloading from huggingface.co... ${(model.downloadProgress * 100).toInt()}%"
-                            } else {
-                                "Downloading quantized weights... ${(model.downloadProgress * 100).toInt()}%"
-                            },
-                            color = if (isHf) Color(0xFFFFB347) else NeonCyan,
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                color = if (isHf) Color(0xFFFFB347) else NeonCyan,
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = if (isHf) {
+                                    "Downloading GGUF... ${(model.downloadProgress * 100).toInt()}%"
+                                } else {
+                                    "Downloading weights... ${(model.downloadProgress * 100).toInt()}%"
+                                },
+                                color = if (isHf) Color(0xFFFFB347) else NeonCyan,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         TextButton(
                             onClick = onCancelDownload,
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp)
+                            Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                     LinearProgressIndicator(
-                        progress = { model.downloadProgress },
+                        progress = model.downloadProgress.coerceAtLeast(0.02f),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)),
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
                         color = if (isHf) Color(0xFFFF9D00) else NeonCyan,
                         trackColor = ObsidianBorder
                     )

@@ -16,12 +16,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+
 class HuggingFaceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val apiService = HuggingFaceApiService()
     private val database = AppDatabase.getDatabase(application, viewModelScope)
     private val modelRepository = ModelRepository(database.modelDao())
     private val modelDownloader = com.example.data.remote.RealModelDownloader(application)
+
+    val localModels: StateFlow<List<LocalModelEntity>> = modelRepository.getAllModels()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val downloadJobs = mutableMapOf<String, Job>()
 
     private val _models = MutableStateFlow<List<HuggingFaceModel>>(emptyList())
     val models: StateFlow<List<HuggingFaceModel>> = _models.asStateFlow()
@@ -110,6 +118,21 @@ class HuggingFaceViewModel(application: Application) : AndroidViewModel(applicat
 
             val requiredRam = (estBytes / (1024 * 1024) * 1.3f).toInt().coerceAtLeast(400)
 
+            val downloadUrl = when {
+                hfModel.id.contains("SmolLM2-135M", ignoreCase = true) -> "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf"
+                hfModel.id.contains("SmolLM2-360M", ignoreCase = true) -> "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q8_0.gguf"
+                hfModel.id.contains("Qwen2.5-0.5B", ignoreCase = true) -> "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+                hfModel.id.contains("Qwen2.5-1.5B", ignoreCase = true) -> "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+                hfModel.id.contains("Qwen2.5-3B", ignoreCase = true) -> "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+                hfModel.id.contains("Llama-3.2-1B", ignoreCase = true) -> "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+                hfModel.id.contains("Llama-3.2-3B", ignoreCase = true) -> "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+                hfModel.id.contains("gemma-2-2b", ignoreCase = true) -> "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
+                hfModel.id.contains("DeepSeek-R1", ignoreCase = true) -> "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+                hfModel.id.contains("Phi-3.5", ignoreCase = true) -> "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf"
+                hfModel.id.contains("-GGUF", ignoreCase = true) -> "https://huggingface.co/${hfModel.id}/resolve/main/$cleanName-$selectedQuant.gguf"
+                else -> "https://huggingface.co/bartowski/${cleanName}-GGUF/resolve/main/${cleanName}-${selectedQuant}.gguf"
+            }
+
             val newEntity = LocalModelEntity(
                 id = "hf-" + hfModel.id.replace('/', '-').lowercase(),
                 name = cleanName,
@@ -122,7 +145,7 @@ class HuggingFaceViewModel(application: Application) : AndroidViewModel(applicat
                 contextLength = 4096,
                 isDownloaded = false,
                 downloadProgress = 0f,
-                downloadUrl = "https://huggingface.co/${hfModel.id}/resolve/main/$cleanName-$selectedQuant.gguf",
+                downloadUrl = downloadUrl,
                 source = "HUGGINGFACE",
                 description = "HuggingFace model by ${hfModel.author} (${hfModel.parameterCount}, $arch). Verified < 4B parameters for mobile.",
                 isFavorite = false
@@ -133,9 +156,23 @@ class HuggingFaceViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun downloadDirectlyFromHf(hfModel: HuggingFaceModel, selectedQuant: String = "Q4_K_M") {
+    fun cancelDownload(modelId: String) {
+        modelDownloader.cancel(modelId)
+        downloadJobs[modelId]?.cancel()
+        downloadJobs.remove(modelId)
         viewModelScope.launch {
-            val cleanName = hfModel.modelName.replace("-GGUF", "").replace("_GGUF", "")
+            modelRepository.updateDownloadState(modelId, isDownloaded = false, progress = 0f, filePath = null)
+            _statusMessage.value = "Cancelled download."
+        }
+    }
+
+    fun downloadDirectlyFromHf(hfModel: HuggingFaceModel, selectedQuant: String = "Q4_K_M") {
+        val cleanName = hfModel.modelName.replace("-GGUF", "").replace("_GGUF", "")
+        val modelId = "hf-" + hfModel.id.replace('/', '-').lowercase()
+
+        if (downloadJobs.containsKey(modelId)) return
+
+        val job = viewModelScope.launch {
             val arch = when {
                 hfModel.architectureClass.contains("gemma") || hfModel.id.contains("gemma") || hfModel.id.contains("gamma") -> "gemma"
                 hfModel.architectureClass.contains("qwen") -> "qwen2"
@@ -156,15 +193,20 @@ class HuggingFaceViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             val requiredRam = (estBytes / (1024 * 1024) * 1.3f).toInt().coerceAtLeast(400)
-            val modelId = "hf-" + hfModel.id.replace('/', '-').lowercase()
 
             val downloadUrl = when {
-                hfModel.id.contains("SmolLM2-135M") -> "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf"
-                hfModel.id.contains("Qwen2.5-0.5B") -> "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
-                hfModel.id.contains("Llama-3.2-1B") -> "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
-                hfModel.id.contains("gemma-2-2b") -> "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
-                hfModel.id.contains("DeepSeek-R1-Distill-Qwen-1.5B") -> "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
-                else -> "https://huggingface.co/${hfModel.id}/resolve/main/$cleanName-$selectedQuant.gguf"
+                hfModel.id.contains("SmolLM2-135M", ignoreCase = true) -> "https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf"
+                hfModel.id.contains("SmolLM2-360M", ignoreCase = true) -> "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q8_0.gguf"
+                hfModel.id.contains("Qwen2.5-0.5B", ignoreCase = true) -> "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+                hfModel.id.contains("Qwen2.5-1.5B", ignoreCase = true) -> "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+                hfModel.id.contains("Qwen2.5-3B", ignoreCase = true) -> "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+                hfModel.id.contains("Llama-3.2-1B", ignoreCase = true) -> "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+                hfModel.id.contains("Llama-3.2-3B", ignoreCase = true) -> "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+                hfModel.id.contains("gemma-2-2b", ignoreCase = true) -> "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
+                hfModel.id.contains("DeepSeek-R1", ignoreCase = true) -> "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+                hfModel.id.contains("Phi-3.5", ignoreCase = true) -> "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf"
+                hfModel.id.contains("-GGUF", ignoreCase = true) -> "https://huggingface.co/${hfModel.id}/resolve/main/$cleanName-$selectedQuant.gguf"
+                else -> "https://huggingface.co/bartowski/${cleanName}-GGUF/resolve/main/${cleanName}-${selectedQuant}.gguf"
             }
 
             val newEntity = LocalModelEntity(
@@ -189,7 +231,6 @@ class HuggingFaceViewModel(application: Application) : AndroidViewModel(applicat
             modelRepository.insertModel(newEntity)
             _statusMessage.value = "📥 Downloading GGUF directly for '$cleanName'..."
 
-            // Trigger direct download
             val result = modelDownloader.downloadModel(newEntity) { progress, _, _, _ ->
                 modelRepository.updateDownloadState(
                     modelId,
@@ -207,7 +248,7 @@ class HuggingFaceViewModel(application: Application) : AndroidViewModel(applicat
                     progress = 1.0f,
                     filePath = file.absolutePath
                 )
-                _statusMessage.value = "✅ '$cleanName' downloaded successfully and ready for local inference!"
+                _statusMessage.value = "✅ '$cleanName' downloaded successfully!"
             } else {
                 modelRepository.updateDownloadState(
                     modelId,
@@ -217,6 +258,8 @@ class HuggingFaceViewModel(application: Application) : AndroidViewModel(applicat
                 )
                 _statusMessage.value = "⚠️ Download failed for '$cleanName': ${result.exceptionOrNull()?.message}"
             }
+            downloadJobs.remove(modelId)
         }
+        downloadJobs[modelId] = job
     }
 }

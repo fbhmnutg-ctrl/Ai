@@ -225,6 +225,7 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
                     progress = 1.0f,
                     filePath = file.absolutePath
                 )
+                _importStatusMessage.value = "✅ '${model.name}' downloaded and installed successfully!"
             } else {
                 modelRepository.updateDownloadState(
                     model.id,
@@ -232,6 +233,8 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
                     progress = 0f,
                     filePath = null
                 )
+                val errorMsg = downloadResult.exceptionOrNull()?.message ?: "Unknown download error"
+                _importStatusMessage.value = "⚠️ Download failed for '${model.name}': $errorMsg"
             }
             downloadJobs.remove(model.id)
         }
