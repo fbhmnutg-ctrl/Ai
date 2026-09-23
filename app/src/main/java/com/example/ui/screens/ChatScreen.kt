@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -33,14 +34,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
@@ -52,6 +57,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -113,6 +119,7 @@ fun ChatScreen(
     viewModel: ChatViewModel,
     onNavigateToModels: () -> Unit,
     onNavigateToOllama: () -> Unit,
+    onNavigateToUploaded: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val messages by viewModel.currentMessages.collectAsStateWithLifecycle()
@@ -122,6 +129,9 @@ fun ChatScreen(
     val inputText by viewModel.inputText.collectAsStateWithLifecycle()
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val currentSessionId by viewModel.currentSessionId.collectAsStateWithLifecycle()
+    val templateSelectionList by viewModel.templateSelectionList.collectAsStateWithLifecycle()
+    val isAmprEnabled by viewModel.isAmprEnabled.collectAsStateWithLifecycle()
+    val isDeepReasoningEnabled by viewModel.isDeepReasoningEnabled.collectAsStateWithLifecycle()
 
     val temperature by viewModel.temperature.collectAsStateWithLifecycle()
     val topP by viewModel.topP.collectAsStateWithLifecycle()
@@ -130,6 +140,7 @@ fun ChatScreen(
 
     var showParamsSheet by remember { mutableStateOf(false) }
     var showSessionsMenu by remember { mutableStateOf(false) }
+    var showModelSelectorMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     // Auto-scroll when new messages arrive or while streaming
@@ -149,11 +160,145 @@ fun ChatScreen(
         TopChatHeader(
             activeModel = activeModel,
             selectedEngine = selectedEngine,
-            onModelClick = onNavigateToModels,
+            onModelClick = { showModelSelectorMenu = true },
             onNewChat = { viewModel.createNewSession() },
             onOpenSettings = { showParamsSheet = true },
             onToggleSessions = { showSessionsMenu = true }
         )
+
+        // Template Selection Dropdown Menu (Max 5 templates + Unload Option)
+        DropdownMenu(
+            expanded = showModelSelectorMenu,
+            onDismissRequest = { showModelSelectorMenu = false },
+            modifier = Modifier
+                .background(ObsidianCard)
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(8.dp))
+                .widthIn(min = 280.dp, max = 340.dp)
+        ) {
+            Text(
+                text = "SELECT TEMPLATE (MAX 5)",
+                color = NeonCyan,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            // Strictly maximum 5 templates as requested by user
+            val displayTemplates = templateSelectionList.take(5)
+            displayTemplates.forEach { model ->
+                val isSelected = activeModel?.id == model.id
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = model.name,
+                                    color = if (isSelected) NeonCyan else TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "${model.architecture} • ${model.quantization} • ${model.parameterCount}",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Active",
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        viewModel.setActiveModel(model)
+                        showModelSelectorMenu = false
+                    }
+                )
+            }
+
+            HorizontalDivider(color = ObsidianBorder, thickness = 1.dp)
+
+            // Unload option to cancel model
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PowerSettingsNew,
+                            contentDescription = "Unload Model",
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Unload Model from RAM",
+                            color = Color(0xFFEF4444),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                },
+                onClick = {
+                    viewModel.unloadModel()
+                    showModelSelectorMenu = false
+                }
+            )
+
+            HorizontalDivider(color = ObsidianBorder, thickness = 1.dp)
+
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudUpload,
+                            contentDescription = null,
+                            tint = NeonCyan,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text("Manage Uploaded Templates...", color = TextPrimary, fontSize = 12.sp)
+                    }
+                },
+                onClick = {
+                    showModelSelectorMenu = false
+                    onNavigateToUploaded()
+                }
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Memory,
+                            contentDescription = null,
+                            tint = VioletNeural,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text("Browse GGUF Hub...", color = TextPrimary, fontSize = 12.sp)
+                    }
+                },
+                onClick = {
+                    showModelSelectorMenu = false
+                    onNavigateToModels()
+                }
+            )
+        }
 
         // Session Selector Dropdown Menu
         DropdownMenu(
@@ -208,6 +353,62 @@ fun ChatScreen(
                     showSessionsMenu = false
                 }
             )
+        }
+
+        // Active Reasoning Mode Sub-Bar
+        if (isDeepReasoningEnabled || isAmprEnabled) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = ObsidianSurface,
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, ObsidianBorder)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (isDeepReasoningEnabled) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = VioletNeural,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "Deep Reasoning AI Active",
+                                color = VioletNeural,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Psychology,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "AMPR Multi-Path Active",
+                                color = NeonCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    Text(
+                        text = if (isDeepReasoningEnabled) "CoT & Axiomatic Check" else "Minimal Entropy H(S)",
+                        color = TextMuted,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
         }
 
         // Messages List or Empty State
@@ -610,10 +811,19 @@ fun FormattedAssistantContent(content: String) {
         val thinkContent = content.substring(thinkStart, thinkEnd).trim()
         val restContent = content.substring(thinkEnd + 8).trim()
 
+        val isDeepReasoning = thinkContent.contains("Deep Reasoning")
+        val isAmpr = thinkContent.contains("AMPR")
+        val title = when {
+            isDeepReasoning -> "Deep Reasoning Chain-of-Thought"
+            isAmpr -> "AMPR Multi-Path Trajectory"
+            else -> "Reasoning Process"
+        }
+        val themeColor = if (isAmpr) NeonCyan else VioletNeural
+
         Surface(
             shape = RoundedCornerShape(8.dp),
             color = ObsidianSurface,
-            border = androidx.compose.foundation.BorderStroke(1.dp, VioletNeural.copy(alpha = 0.3f)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, themeColor.copy(alpha = 0.3f)),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
@@ -627,10 +837,15 @@ fun FormattedAssistantContent(content: String) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Psychology, contentDescription = null, tint = VioletNeural, modifier = Modifier.size(16.dp))
+                        Icon(
+                            imageVector = if (isDeepReasoning) Icons.Default.AutoAwesome else Icons.Default.Psychology,
+                            contentDescription = null,
+                            tint = themeColor,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Text(
-                            text = "Reasoning Process",
-                            color = VioletNeural,
+                            text = title,
+                            color = themeColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -638,7 +853,7 @@ fun FormattedAssistantContent(content: String) {
                     Icon(
                         imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = null,
-                        tint = VioletNeural,
+                        tint = themeColor,
                         modifier = Modifier.size(16.dp)
                     )
                 }

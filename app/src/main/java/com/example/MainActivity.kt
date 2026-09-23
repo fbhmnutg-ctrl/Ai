@@ -16,12 +16,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -43,6 +47,8 @@ import com.example.ui.screens.BenchmarkScreen
 import com.example.ui.screens.ChatScreen
 import com.example.ui.screens.ModelHubScreen
 import com.example.ui.screens.OllamaHostScreen
+import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.UploadedTemplatesScreen
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.NeonCyanSubtle
 import com.example.ui.theme.MyApplicationTheme
@@ -65,6 +71,8 @@ enum class AppDestination(
 ) {
     CHAT("Chat", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "tab_chat"),
     MODELS("GGUF Hub", Icons.Filled.Memory, Icons.Outlined.Memory, "tab_models"),
+    UPLOADED("Templates", Icons.Filled.CloudUpload, Icons.Outlined.CloudUpload, "tab_uploaded"),
+    SETTINGS("Settings", Icons.Filled.Settings, Icons.Outlined.Settings, "tab_settings"),
     OLLAMA("Ollama", Icons.Filled.Dns, Icons.Outlined.Dns, "tab_ollama"),
     BENCHMARK("Speed", Icons.Filled.Speed, Icons.Outlined.Speed, "tab_benchmark")
 }
@@ -96,8 +104,15 @@ class MainActivity : ComponentActivity() {
                             containerColor = ObsidianSurface,
                             contentColor = TextPrimary
                         ) {
-                            AppDestination.entries.forEach { destination ->
-                                val isSelected = currentTab == destination
+                            val navItems = listOf(
+                                AppDestination.CHAT,
+                                AppDestination.MODELS,
+                                AppDestination.UPLOADED,
+                                AppDestination.SETTINGS,
+                                AppDestination.OLLAMA
+                            )
+                            navItems.forEach { destination ->
+                                val isSelected = currentTab == destination || (destination == AppDestination.SETTINGS && currentTab == AppDestination.BENCHMARK)
                                 NavigationBarItem(
                                     selected = isSelected,
                                     onClick = { currentTab = destination },
@@ -137,7 +152,8 @@ class MainActivity : ComponentActivity() {
                                 ChatScreen(
                                     viewModel = chatViewModel,
                                     onNavigateToModels = { currentTab = AppDestination.MODELS },
-                                    onNavigateToOllama = { currentTab = AppDestination.OLLAMA }
+                                    onNavigateToOllama = { currentTab = AppDestination.OLLAMA },
+                                    onNavigateToUploaded = { currentTab = AppDestination.UPLOADED }
                                 )
                             }
                             AppDestination.MODELS -> {
@@ -147,6 +163,21 @@ class MainActivity : ComponentActivity() {
                                         chatViewModel.setActiveModel(model)
                                         currentTab = AppDestination.CHAT
                                     }
+                                )
+                            }
+                            AppDestination.UPLOADED -> {
+                                UploadedTemplatesScreen(
+                                    viewModel = modelHubViewModel,
+                                    onModelSelectedForChat = { model ->
+                                        chatViewModel.setActiveModel(model)
+                                        currentTab = AppDestination.CHAT
+                                    }
+                                )
+                            }
+                            AppDestination.SETTINGS -> {
+                                SettingsScreen(
+                                    chatViewModel = chatViewModel,
+                                    onNavigateToBenchmark = { currentTab = AppDestination.BENCHMARK }
                                 )
                             }
                             AppDestination.OLLAMA -> {

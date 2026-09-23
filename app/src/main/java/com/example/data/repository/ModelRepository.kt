@@ -10,6 +10,8 @@ class ModelRepository(private val modelDao: ModelDao) {
 
     fun getDownloadedModels(): Flow<List<LocalModelEntity>> = modelDao.getDownloadedModels()
 
+    fun getUploadedModels(): Flow<List<LocalModelEntity>> = modelDao.getUploadedModels()
+
     fun getModelById(id: String): Flow<LocalModelEntity?> = modelDao.getModelById(id)
 
     suspend fun getModelByIdDirect(id: String): LocalModelEntity? = modelDao.getModelByIdDirect(id)

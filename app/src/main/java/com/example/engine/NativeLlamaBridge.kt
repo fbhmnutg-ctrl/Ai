@@ -118,16 +118,24 @@ object NativeLlamaBridge {
         }
     }
 
-    fun releaseCurrentModel() {
-        try {
+    fun isModelLoaded(): Boolean = loadedModelHandle != null
+    fun getLoadedModelPath(): String? = loadedModelPath
+
+    fun releaseCurrentModel(): Boolean {
+        return try {
             val handle = loadedModelHandle
             if (handle != null) {
                 Llama.releaseModel(handle)
                 loadedModelHandle = null
                 loadedModelPath = null
+                Log.i(TAG, "Native model successfully released and RAM cleared.")
+                true
+            } else {
+                false
             }
         } catch (t: Throwable) {
             Log.w(TAG, "Error releasing model: ${t.message}")
+            false
         }
     }
 }

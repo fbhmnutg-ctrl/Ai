@@ -16,6 +16,9 @@ interface ModelDao {
     @Query("SELECT * FROM local_models WHERE isDownloaded = 1 ORDER BY lastUsedTimestamp DESC")
     fun getDownloadedModels(): Flow<List<LocalModelEntity>>
 
+    @Query("SELECT * FROM local_models WHERE source = 'UPLOADED' OR source = 'IMPORTED' OR id LIKE 'imported-%' ORDER BY lastUsedTimestamp DESC, name ASC")
+    fun getUploadedModels(): Flow<List<LocalModelEntity>>
+
     @Query("SELECT * FROM local_models WHERE id = :id LIMIT 1")
     fun getModelById(id: String): Flow<LocalModelEntity?>
 

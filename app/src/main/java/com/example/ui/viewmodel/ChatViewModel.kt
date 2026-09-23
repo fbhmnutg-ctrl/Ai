@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
+import com.example.data.local.SettingsManager
 import com.example.data.local.entity.ChatMessage
 import com.example.data.local.entity.ChatSession
 import com.example.data.local.entity.LocalModelEntity
@@ -15,6 +16,7 @@ import com.example.data.repository.ChatRepository
 import com.example.data.repository.ModelRepository
 import com.example.engine.GenerationMetrics
 import com.example.engine.LocalInferenceEngine
+import com.example.engine.NativeLlamaBridge
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -60,6 +63,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // Active Model
     private val _activeModel = MutableStateFlow<LocalModelEntity?>(null)
     val activeModel: StateFlow<LocalModelEntity?> = _activeModel.asStateFlow()
+
+    val settingsManager = SettingsManager.getInstance(application)
+    val isAmprEnabled: StateFlow<Boolean> = settingsManager.isAmprEnabled
+    val isDeepReasoningEnabled: StateFlow<Boolean> = settingsManager.isDeepReasoningEnabled
+
+    // The template selection list contains a maximum of 5 templates for display
+    val templateSelectionList: StateFlow<List<LocalModelEntity>> = modelRepository.getAllModels()
+        .map { models ->
+            val readyModels = models.filter { it.isDownloaded }
+            if (readyModels.isNotEmpty()) {
+                readyModels.sortedByDescending { it.lastUsedTimestamp }.take(5)
+            } else {
+                models.take(5)
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun unloadModel() {
+        activeJob?.cancel()
+        _generationState.value = ActiveGenerationState(isGenerating = false)
+        NativeLlamaBridge.releaseCurrentModel()
+        _activeModel.value = null
+    }
 
     // Engine Type: "LOCAL_GGUF" or "OLLAMA"
     private val _selectedEngine = MutableStateFlow("LOCAL_GGUF")
@@ -315,7 +340,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     systemPrompt = _systemPrompt.value,
                     temperature = _temperature.value,
                     topP = _topP.value,
-                    numThreads = _cpuThreads.value
+                    numThreads = _cpuThreads.value,
+                    isAmprEnabled = isAmprEnabled.value,
+                    amprKPaths = settingsManager.amprKPaths.value,
+                    isDeepReasoningEnabled = isDeepReasoningEnabled.value,
+                    deepReasoningEffort = settingsManager.deepReasoningEffort.value
                 ).catch { e ->
                     accumulated.append("\n\n*Local engine error: ${e.localizedMessage}*")
                     _generationState.value = _generationState.value.copy(
@@ -357,10 +386,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             engineDescription = finalMetrics.engineDescription
                         )
 
-                        val modelTag = if (finalMetrics.isNativeEngine) {
-                            "⚡ ${model.name} (${model.quantization} • Native)"
-                        } else {
-                            "${model.name} (${model.quantization})"
+                        val modelTag = when {
+                            finalMetrics.isDeepReasoningActive -> {
+                                "🔮 ${model.name} (${model.quantization} • Deep Reasoning)"
+                            }
+                            finalMetrics.isAmprActive -> {
+                                "🧠 ${model.name} (${model.quantization} • AMPR K=${finalMetrics.amprKPaths} H(S)=${finalMetrics.amprEntropyBits})"
+                            }
+                            finalMetrics.isNativeEngine -> {
+                                "⚡ ${model.name} (${model.quantization} • Native)"
+                            }
+                            else -> {
+                                "${model.name} (${model.quantization})"
+                            }
                         }
 
                         chatRepository.insertMessage(
