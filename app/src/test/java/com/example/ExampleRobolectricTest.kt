@@ -301,15 +301,6 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `background inference manager initializes cleanly`() {
-    val context = ApplicationProvider.getApplicationContext<android.app.Application>()
-    com.example.engine.BackgroundInferenceManager.initialize(context)
-    val state = com.example.engine.BackgroundInferenceManager.generationState.value
-    org.junit.Assert.assertFalse(state.isGenerating)
-    assertEquals("", state.streamingContent)
-  }
-
-  @Test
   fun `local inference generates response without crash for downloaded model`() = kotlinx.coroutines.runBlocking {
     val context = ApplicationProvider.getApplicationContext<android.app.Application>()
     val engine = com.example.engine.LocalInferenceEngine()

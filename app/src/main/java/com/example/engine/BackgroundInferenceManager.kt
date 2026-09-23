@@ -75,13 +75,6 @@ object BackgroundInferenceManager {
             engineSource = if (isOllama) "OLLAMA" else "LOCAL_GGUF"
         )
 
-        // Start Foreground Service to keep app and memory alive in background
-        try {
-            InferenceForegroundService.startService(context, model.name)
-        } catch (e: Exception) {
-            Log.w(TAG, "Foreground service start failed: ${e.message}")
-        }
-
         activeJob = applicationScope.launch {
             val startTime = System.currentTimeMillis()
             val accumulated = StringBuilder()
@@ -137,21 +130,6 @@ object BackgroundInferenceManager {
                                     peakRamMb = model.requiredRamMb,
                                     engineSource = "LOCAL_GGUF"
                                 )
-                            }
-
-                            // Periodically update foreground notification (every ~500ms)
-                            val now = System.currentTimeMillis()
-                            if (now - lastNotificationUpdate > 500) {
-                                lastNotificationUpdate = now
-                                appContext?.let { ctx ->
-                                    InferenceForegroundService.updateProgress(
-                                        context = ctx,
-                                        modelName = model.name,
-                                        tokens = tokensCount,
-                                        speed = currentSpeed,
-                                        preview = accumulated.toString()
-                                    )
-                                }
                             }
                         } else {
                             // Final chunk completed
@@ -336,10 +314,6 @@ object BackgroundInferenceManager {
     }
 
     private fun finishBackgroundService() {
-        appContext?.let { ctx ->
-            try {
-                InferenceForegroundService.stopService(ctx)
-            } catch (_: Exception) {}
-        }
+        // Background service removed
     }
 }

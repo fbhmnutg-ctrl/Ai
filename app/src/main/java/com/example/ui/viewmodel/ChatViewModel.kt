@@ -14,7 +14,6 @@ import com.example.data.ollama.OllamaChatRequest
 import com.example.data.ollama.OllamaClient
 import com.example.data.repository.ChatRepository
 import com.example.data.repository.ModelRepository
-import com.example.engine.BackgroundInferenceManager
 import com.example.engine.ChatTemplateEngine
 import com.example.engine.GenerationMetrics
 import com.example.engine.LocalInferenceEngine
@@ -103,8 +102,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun unloadModel() {
         modelLoadingJob?.cancel()
-        activeJob?.cancel()
-        BackgroundInferenceManager.stopCurrentGeneration()
+        stopGeneration()
         NativeLlamaBridge.releaseCurrentModel()
         _activeModel.value = null
         _modelLoadingState.value = ModelLoadingState(
@@ -176,8 +174,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedEngine = MutableStateFlow("LOCAL_GGUF")
     val selectedEngine: StateFlow<String> = _selectedEngine.asStateFlow()
 
-    // Generation State (Synchronized with BackgroundInferenceManager)
-    val generationState: StateFlow<ActiveGenerationState> = BackgroundInferenceManager.generationState
+    // Generation State
+    private val _generationState = MutableStateFlow(ActiveGenerationState())
+    val generationState: StateFlow<ActiveGenerationState> = _generationState.asStateFlow()
 
     // Input text
     private val _inputText = MutableStateFlow("")
@@ -200,8 +199,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var messageObserveJob: Job? = null
 
     init {
-        BackgroundInferenceManager.initialize(application)
-
         // Auto select first session and downloaded model
         viewModelScope.launch {
             sessions.collect { sessionList ->
@@ -326,7 +323,36 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopGeneration() {
-        BackgroundInferenceManager.stopCurrentGeneration()
+        activeJob?.cancel()
+        activeJob = null
+
+        val currentStream = _generationState.value.streamingContent
+        val sId = _currentSessionId.value
+        val model = _activeModel.value
+
+        if (sId != null && currentStream.isNotBlank()) {
+            val cleanedStream = ChatTemplateEngine.cleanModelResponse(currentStream)
+            if (cleanedStream.isNotBlank()) {
+                val metrics = _generationState.value
+                viewModelScope.launch {
+                    val assistantMsg = ChatMessage(
+                        sessionId = sId,
+                        role = "assistant",
+                        content = "$cleanedStream ⏹",
+                        tokensCount = metrics.tokensGenerated,
+                        tokensPerSecond = metrics.tokensPerSecond,
+                        generationDurationMs = metrics.durationMs,
+                        timeToFirstTokenMs = metrics.timeToFirstTokenMs,
+                        modelTag = model?.name ?: "Local GGUF",
+                        timestamp = System.currentTimeMillis()
+                    )
+                    chatRepository.insertMessage(assistantMsg)
+                    chatRepository.touchSession(sId)
+                }
+            }
+        }
+
+        _generationState.value = ActiveGenerationState(isGenerating = false)
     }
 
     fun sendMessage(promptOverride: String? = null) {
@@ -374,25 +400,198 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 isDownloaded = true
             )
 
-            // Start background resilient generation with foreground notification
-            BackgroundInferenceManager.startGeneration(
-                context = getApplication(),
-                sessionId = sId,
-                model = model,
-                messages = _currentMessages.value,
-                userPrompt = prompt,
-                systemPrompt = _systemPrompt.value,
-                temperature = _temperature.value,
-                topP = _topP.value,
-                cpuThreads = _cpuThreads.value,
-                isStreaming = isStreaming,
-                isIntegratedThinkEnabled = isIntegratedThinkEnabled.value,
-                isGpuOffloadEnabled = settingsManager.isGpuOffloadEnabled.value,
-                gpuOffloadLayers = settingsManager.gpuOffloadLayers.value,
-                isOomGuardEnabled = settingsManager.isOomGuardEnabled.value,
-                isOllama = isOllama,
-                ollamaClient = if (isOllama) ollamaClient else null
+            activeJob?.cancel()
+            _generationState.value = ActiveGenerationState(
+                isGenerating = true,
+                streamingContent = "",
+                isComputingFullResponse = !isStreaming,
+                engineSource = if (isOllama) "OLLAMA" else "LOCAL_GGUF"
             )
+
+            activeJob = viewModelScope.launch {
+                val startTime = System.currentTimeMillis()
+                val accumulated = StringBuilder()
+                var tokensCount = 0
+                var ttft = 0L
+
+                if (!isOllama) {
+                    try {
+                        localEngine.generateLocalStream(
+                            model = model,
+                            messages = _currentMessages.value,
+                            userPromptOverride = prompt,
+                            systemPrompt = _systemPrompt.value,
+                            temperature = _temperature.value,
+                            topP = _topP.value,
+                            numThreads = _cpuThreads.value,
+                            isIntegratedThinkEnabled = isIntegratedThinkEnabled.value,
+                            context = getApplication(),
+                            isGpuOffloadEnabled = settingsManager.isGpuOffloadEnabled.value,
+                            gpuOffloadLayers = settingsManager.gpuOffloadLayers.value,
+                            isOomGuardEnabled = settingsManager.isOomGuardEnabled.value
+                        ).catch { e ->
+                            if (e !is kotlinx.coroutines.CancellationException) {
+                                accumulated.append("\n\n*Error: ${e.localizedMessage}*")
+                                _generationState.value = _generationState.value.copy(
+                                    isGenerating = false,
+                                    isComputingFullResponse = false,
+                                    streamingContent = accumulated.toString()
+                                )
+                            }
+                        }.collect { chunk ->
+                            if (!chunk.isFinished) {
+                                if (tokensCount == 0) {
+                                    ttft = System.currentTimeMillis() - startTime
+                                }
+                                tokensCount++
+                                accumulated.append(chunk.token)
+                                val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
+                                val currentSpeed = if (elapsedSec > 0.1f) tokensCount / elapsedSec else 20f
+
+                                if (isStreaming) {
+                                    _generationState.value = _generationState.value.copy(
+                                        isGenerating = true,
+                                        isComputingFullResponse = false,
+                                        streamingContent = accumulated.toString(),
+                                        tokensGenerated = tokensCount,
+                                        tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
+                                        timeToFirstTokenMs = ttft,
+                                        durationMs = System.currentTimeMillis() - startTime,
+                                        peakRamMb = model.requiredRamMb,
+                                        engineSource = "LOCAL_GGUF"
+                                    )
+                                }
+                            } else {
+                                val totalDuration = System.currentTimeMillis() - startTime
+                                val speed = if (totalDuration > 0) (tokensCount * 1000f) / totalDuration else 20f
+                                val cleaned = ChatTemplateEngine.cleanModelResponse(accumulated.toString())
+
+                                _generationState.value = ActiveGenerationState(
+                                    isGenerating = false,
+                                    isComputingFullResponse = false,
+                                    streamingContent = cleaned,
+                                    tokensGenerated = tokensCount,
+                                    tokensPerSecond = (speed * 10).toInt() / 10f,
+                                    timeToFirstTokenMs = ttft,
+                                    durationMs = totalDuration,
+                                    peakRamMb = chunk.metrics?.peakRamUsageMb ?: model.requiredRamMb,
+                                    engineSource = "LOCAL_GGUF",
+                                    isNativeEngine = chunk.metrics?.isNativeEngine ?: true,
+                                    engineDescription = chunk.metrics?.engineDescription ?: "llama.cpp"
+                                )
+
+                                val assistantMsg = ChatMessage(
+                                    sessionId = sId,
+                                    role = "assistant",
+                                    content = cleaned,
+                                    tokensCount = tokensCount,
+                                    tokensPerSecond = (speed * 10).toInt() / 10f,
+                                    generationDurationMs = totalDuration,
+                                    timeToFirstTokenMs = ttft,
+                                    modelTag = model.name,
+                                    timestamp = System.currentTimeMillis()
+                                )
+                                chatRepository.insertMessage(assistantMsg)
+                                chatRepository.touchSession(sId)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        if (e !is kotlinx.coroutines.CancellationException) {
+                            _generationState.value = _generationState.value.copy(isGenerating = false)
+                        }
+                    }
+                } else {
+                    // Ollama Remote Generation
+                    try {
+                        val historyPayload = _currentMessages.value.map {
+                            OllamaChatMessagePayload(role = it.role, content = it.content)
+                        } + OllamaChatMessagePayload(role = "user", content = prompt)
+
+                        val ollamaModelTag = if (model.source == "OLLAMA") model.id.removePrefix("ollama-") else "llama3.2:1b"
+
+                        val request = OllamaChatRequest(
+                            model = ollamaModelTag,
+                            messages = historyPayload,
+                            stream = true,
+                            options = OllamaChatOptions(
+                                temperature = _temperature.value,
+                                topP = _topP.value,
+                                numThread = _cpuThreads.value
+                            )
+                        )
+
+                        ollamaClient.streamChat(request)
+                            .catch { e ->
+                                if (e !is kotlinx.coroutines.CancellationException) {
+                                    accumulated.append("\n\n*Ollama Error: ${e.localizedMessage}*")
+                                    _generationState.value = _generationState.value.copy(
+                                        isGenerating = false,
+                                        isComputingFullResponse = false,
+                                        streamingContent = accumulated.toString()
+                                    )
+                                }
+                            }
+                            .collect { chunk ->
+                                val piece = chunk.message?.content ?: ""
+                                if (piece.isNotEmpty()) {
+                                    if (tokensCount == 0) {
+                                        ttft = System.currentTimeMillis() - startTime
+                                    }
+                                    tokensCount++
+                                    accumulated.append(piece)
+
+                                    if (isStreaming) {
+                                        _generationState.value = _generationState.value.copy(
+                                            isGenerating = true,
+                                            isComputingFullResponse = false,
+                                            streamingContent = accumulated.toString(),
+                                            tokensGenerated = tokensCount,
+                                            engineSource = "OLLAMA"
+                                        )
+                                    }
+                                }
+
+                                if (chunk.done == true) {
+                                    val totalDuration = System.currentTimeMillis() - startTime
+                                    val speed = if (totalDuration > 0) (tokensCount * 1000f) / totalDuration else 0f
+                                    val cleaned = ChatTemplateEngine.cleanModelResponse(accumulated.toString())
+
+                                    _generationState.value = ActiveGenerationState(
+                                        isGenerating = false,
+                                        isComputingFullResponse = false,
+                                        streamingContent = cleaned,
+                                        tokensGenerated = tokensCount,
+                                        tokensPerSecond = (speed * 10).toInt() / 10f,
+                                        timeToFirstTokenMs = ttft,
+                                        durationMs = totalDuration,
+                                        peakRamMb = 0,
+                                        engineSource = "OLLAMA",
+                                        isNativeEngine = false,
+                                        engineDescription = "Ollama Remote Server"
+                                    )
+
+                                    val assistantMsg = ChatMessage(
+                                        sessionId = sId,
+                                        role = "assistant",
+                                        content = cleaned,
+                                        tokensCount = tokensCount,
+                                        tokensPerSecond = (speed * 10).toInt() / 10f,
+                                        generationDurationMs = totalDuration,
+                                        timeToFirstTokenMs = ttft,
+                                        modelTag = "Ollama: $ollamaModelTag",
+                                        timestamp = System.currentTimeMillis()
+                                    )
+                                    chatRepository.insertMessage(assistantMsg)
+                                    chatRepository.touchSession(sId)
+                                }
+                            }
+                    } catch (e: Exception) {
+                        if (e !is kotlinx.coroutines.CancellationException) {
+                            _generationState.value = _generationState.value.copy(isGenerating = false)
+                        }
+                    }
+                }
+            }
         }
     }
 }
