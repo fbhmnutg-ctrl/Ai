@@ -44,6 +44,68 @@ class SettingsManager private constructor(context: Context) {
     private val _appTheme = MutableStateFlow(prefs.getString(KEY_APP_THEME, "CATPPUCCIN") ?: "CATPPUCCIN")
     val appTheme: StateFlow<String> = _appTheme.asStateFlow()
 
+    // Native C++ PocketMath Core Flags
+    private val _enableFractionalEntropy = MutableStateFlow(prefs.getBoolean(KEY_FRACTIONAL_ENTROPY, true))
+    val enableFractionalEntropy: StateFlow<Boolean> = _enableFractionalEntropy.asStateFlow()
+
+    private val _enablePoincareAttention = MutableStateFlow(prefs.getBoolean(KEY_POINCARE_ATTENTION, true))
+    val enablePoincareAttention: StateFlow<Boolean> = _enablePoincareAttention.asStateFlow()
+
+    private val _enableRiemannianEKF = MutableStateFlow(prefs.getBoolean(KEY_RIEMANNIAN_EKF, true))
+    val enableRiemannianEKF: StateFlow<Boolean> = _enableRiemannianEKF.asStateFlow()
+
+    private val _enableSpectralFFT = MutableStateFlow(prefs.getBoolean(KEY_SPECTRAL_FFT, true))
+    val enableSpectralFFT: StateFlow<Boolean> = _enableSpectralFFT.asStateFlow()
+
+    private val _fractionalAlpha = MutableStateFlow(prefs.getFloat(KEY_FRACTIONAL_ALPHA, 0.5f))
+    val fractionalAlpha: StateFlow<Float> = _fractionalAlpha.asStateFlow()
+
+    init {
+        syncPocketMathConfig()
+    }
+
+    private fun syncPocketMathConfig() {
+        com.example.engine.NativePocketMathBridge.updateConfig(
+            com.example.engine.PocketMathConfig(
+                enableFractionalEntropy = _enableFractionalEntropy.value,
+                enablePoincareAttention = _enablePoincareAttention.value,
+                enableRiemannianEKF = _enableRiemannianEKF.value,
+                enableSpectralFFT = _enableSpectralFFT.value,
+                fractionalAlpha = _fractionalAlpha.value
+            )
+        )
+    }
+
+    fun setFractionalEntropy(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_FRACTIONAL_ENTROPY, enabled).apply()
+        _enableFractionalEntropy.value = enabled
+        syncPocketMathConfig()
+    }
+
+    fun setPoincareAttention(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_POINCARE_ATTENTION, enabled).apply()
+        _enablePoincareAttention.value = enabled
+        syncPocketMathConfig()
+    }
+
+    fun setRiemannianEKF(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_RIEMANNIAN_EKF, enabled).apply()
+        _enableRiemannianEKF.value = enabled
+        syncPocketMathConfig()
+    }
+
+    fun setSpectralFFT(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SPECTRAL_FFT, enabled).apply()
+        _enableSpectralFFT.value = enabled
+        syncPocketMathConfig()
+    }
+
+    fun setFractionalAlpha(alpha: Float) {
+        prefs.edit().putFloat(KEY_FRACTIONAL_ALPHA, alpha).apply()
+        _fractionalAlpha.value = alpha
+        syncPocketMathConfig()
+    }
+
     fun setAppTheme(theme: String) {
         prefs.edit().putString(KEY_APP_THEME, theme).apply()
         _appTheme.value = theme
@@ -117,6 +179,12 @@ class SettingsManager private constructor(context: Context) {
         private const val KEY_STREAMING_ENABLED = "key_streaming_enabled"
         private const val KEY_INTEGRATED_THINK_ENABLED = "key_integrated_think_enabled"
         private const val KEY_APP_THEME = "key_app_theme"
+
+        private const val KEY_FRACTIONAL_ENTROPY = "key_fractional_entropy"
+        private const val KEY_POINCARE_ATTENTION = "key_poincare_attention"
+        private const val KEY_RIEMANNIAN_EKF = "key_riemannian_ekf"
+        private const val KEY_SPECTRAL_FFT = "key_spectral_fft"
+        private const val KEY_FRACTIONAL_ALPHA = "key_fractional_alpha"
 
         @Volatile
         private var INSTANCE: SettingsManager? = null

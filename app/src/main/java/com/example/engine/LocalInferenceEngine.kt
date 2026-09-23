@@ -68,7 +68,7 @@ class LocalInferenceEngine {
         val effectiveAmpr = isAmprEnabled && !isDeepReasoningEnabled
         val effectiveIntegratedThink = isIntegratedThinkEnabled && !effectiveDeepReasoning && !effectiveAmpr
 
-        val effectiveSystemPrompt = when {
+        val baseSystemPrompt = when {
             effectiveDeepReasoning -> {
                 if (isArabic) {
                     "أنت نموذج ذكاء اصطناعي محلي متقدم يعمل بنظام التفكير العميق (Deep Reasoning) مباشرة على الهاتف.\n" +
@@ -94,6 +94,13 @@ class LocalInferenceEngine {
             }
             else -> systemPrompt
         }
+
+        // Apply native C++ intent guardrails
+        val effectiveSystemPrompt = NativeIntentProcessor.formatSystemPrompt(
+            userPrompt = userPrompt,
+            systemPrompt = baseSystemPrompt,
+            isArabic = isArabic
+        )
 
         var isRealNative = false
         var nativeEngineName = "Offline CPU Pipeline"
@@ -125,6 +132,9 @@ class LocalInferenceEngine {
         if (fullResponse.isBlank()) {
             fullResponse = generateKnowledgeResponse(userPrompt, model, isArabic)
         }
+
+        // Sanitize output through Native C++ Intent Processor to remove meta-commentary headers
+        fullResponse = NativeIntentProcessor.sanitizeOutput(fullResponse)
 
         var measuredEntropy = 0f
         var selectedTrajectory = 1

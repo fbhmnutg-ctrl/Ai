@@ -104,6 +104,12 @@ fun SettingsScreen(
     val currentAppTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
     val activeModel by chatViewModel.activeModel.collectAsStateWithLifecycle()
 
+    val enableFractionalEntropy by settingsManager.enableFractionalEntropy.collectAsStateWithLifecycle()
+    val enablePoincareAttention by settingsManager.enablePoincareAttention.collectAsStateWithLifecycle()
+    val enableRiemannianEKF by settingsManager.enableRiemannianEKF.collectAsStateWithLifecycle()
+    val enableSpectralFFT by settingsManager.enableSpectralFFT.collectAsStateWithLifecycle()
+    val fractionalAlpha by settingsManager.fractionalAlpha.collectAsStateWithLifecycle()
+
     var showAmprSpecDialog by remember { mutableStateOf(false) }
     var unloadMessage by remember { mutableStateOf<String?>(null) }
 
@@ -748,6 +754,156 @@ fun SettingsScreen(
             }
         }
 
+        // Section 2C: PocketMath C++ Mathematical Core Acceleration Engine
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, NeonCyanDim, RoundedCornerShape(12.dp))
+                .testTag("pocket_math_cpp_core_card"),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(NeonCyanSubtle),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Science,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "PocketMath C++ Core",
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                GgufTag(text = "PURE C++ SIMD", color = EmeraldGlow)
+                            }
+                            Text(
+                                text = "arm64-v8a NEON Native Acceleration Engine",
+                                color = TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "High-performance C++ extension framework (`pocket_math_core.cpp`) hooking directly into the llama.cpp inference pipeline with real-time dynamic runtime feature flags.",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = ObsidianBorder, thickness = 1.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 1. Fractional-Order Entropy Predictor
+                MathModuleToggleRow(
+                    title = "1. Fractional-Order Entropy Predictor",
+                    flagCode = "FEATURE_FRACTIONAL_ENTROPY",
+                    mathSymbol = "D^α_t S(t) = ∫ (t-τ)^(-α) S'(τ) dτ",
+                    description = "Caputo fractional calculus entropy predictor evaluating temporal logit uncertainty.",
+                    isEnabled = enableFractionalEntropy,
+                    onToggle = { settingsManager.setFractionalEntropy(it) },
+                    accentColor = NeonCyan
+                )
+
+                if (enableFractionalEntropy) {
+                    Column(modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Caputo Fractional Order (α):", color = TextMuted, fontSize = 11.sp)
+                            Text(
+                                String.format("%.2f", fractionalAlpha),
+                                color = NeonCyan,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Slider(
+                            value = fractionalAlpha,
+                            onValueChange = { settingsManager.setFractionalAlpha(it) },
+                            valueRange = 0.1f..0.9f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = NeonCyan,
+                                activeTrackColor = NeonCyan,
+                                inactiveTrackColor = ObsidianBorder
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 2. Poincaré Hyperbolic Attention Kernel
+                MathModuleToggleRow(
+                    title = "2. Poincaré Hyperbolic Attention Kernel",
+                    flagCode = "FEATURE_POINCARE_ATTENTION",
+                    mathSymbol = "d_B(u, v) = arcosh(1 + 2||u-v||²/((1-||u||²)(1-||v||²)))",
+                    description = "Möbius addition & non-Euclidean Poincaré ball projections for key-query attention.",
+                    isEnabled = enablePoincareAttention,
+                    onToggle = { settingsManager.setPoincareAttention(it) },
+                    accentColor = EmeraldGlow
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 3. Riemannian Extended Kalman Filtering
+                MathModuleToggleRow(
+                    title = "3. Riemannian Extended Kalman Filtering",
+                    flagCode = "FEATURE_RIEMANNIAN_EKF",
+                    mathSymbol = "x_k = Exp_{x_k^-}(K_k v_k)",
+                    description = "State-estimation filter over Riemannian manifold filtering out high-variance logit noise.",
+                    isEnabled = enableRiemannianEKF,
+                    onToggle = { settingsManager.setRiemannianEKF(it) },
+                    accentColor = VioletNeural
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 4. Spectral Quantization via 4D Fast Fourier Transform
+                MathModuleToggleRow(
+                    title = "4. Spectral Quantization via 4D-FFT",
+                    flagCode = "FEATURE_SPECTRAL_FFT",
+                    mathSymbol = "F{f}(ω) = ∫ f(x) e^(-i ω x) dx",
+                    description = "Cooley-Tukey 4D frequency-domain filtering attenuating stochastic hesitation noise.",
+                    isEnabled = enableSpectralFFT,
+                    onToggle = { settingsManager.setSpectralFFT(it) },
+                    accentColor = NeonCyan
+                )
+            }
+        }
+
         // Section 3: Text Display Streaming Preference (User Request)
         Card(
             modifier = Modifier
@@ -1299,5 +1455,78 @@ private fun SpecMatrixRow(metric: String, single: String, ampr: String, native7b
         Text(single, color = TextMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
         Text(ampr, color = EmeraldGlow, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         Text(native7b, color = Color(0xFFEF4444), fontSize = 10.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MathModuleToggleRow(
+    title: String,
+    flagCode: String,
+    mathSymbol: String,
+    description: String,
+    isEnabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    accentColor: Color
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isEnabled) ObsidianSurface else ObsidianSurface.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(8.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            if (isEnabled) 1.dp else 0.5.dp,
+            if (isEnabled) accentColor.copy(alpha = 0.6f) else ObsidianBorder
+        )
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = flagCode,
+                        color = accentColor,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Switch(
+                    checked = isEnabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = ObsidianBg,
+                        checkedTrackColor = accentColor,
+                        uncheckedThumbColor = TextMuted,
+                        uncheckedTrackColor = ObsidianCard
+                    )
+                )
+            }
+
+            Text(
+                text = mathSymbol,
+                color = accentColor.copy(alpha = 0.9f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+
+            Text(
+                text = description,
+                color = TextMuted,
+                fontSize = 10.sp,
+                lineHeight = 14.sp
+            )
+        }
     }
 }
