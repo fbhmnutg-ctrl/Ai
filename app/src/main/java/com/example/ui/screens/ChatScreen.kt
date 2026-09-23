@@ -1166,23 +1166,30 @@ fun CleanStreamingBubble(
                         trackColor = devTheme.border
                     )
                     Text(
-                        text = if (isArabic) "جاري إعداد الرد بالكامل في الخلفية..." else "Computing complete response in background...",
+                        text = if (isArabic) "جاري البث الفوري..." else "Streaming response live...",
                         color = devTheme.textSecondary,
                         fontSize = 12.sp
                     )
                 }
             }
         } else {
-            Text(
-                text = state.streamingContent.ifEmpty { if (isArabic) "جاري التفكير..." else "Thinking..." } + " ▋",
-                color = devTheme.textPrimary,
-                fontSize = 14.sp,
-                lineHeight = 23.sp,
-                style = LocalTextStyle.current.copy(
-                    textDirection = TextDirection.ContentOrLtr,
-                    textAlign = if (isArabic) TextAlign.End else TextAlign.Start
+            if (state.streamingContent.contains("<think>") || state.streamingContent.contains("```")) {
+                CleanFormattedAssistantContent(
+                    content = state.streamingContent + " ▋",
+                    devTheme = devTheme
                 )
-            )
+            } else {
+                Text(
+                    text = state.streamingContent.ifEmpty { if (isArabic) "جاري التفكير..." else "Thinking..." } + " ▋",
+                    color = devTheme.textPrimary,
+                    fontSize = 14.sp,
+                    lineHeight = 23.sp,
+                    style = LocalTextStyle.current.copy(
+                        textDirection = TextDirection.ContentOrLtr,
+                        textAlign = if (isArabic) TextAlign.End else TextAlign.Start
+                    )
+                )
+            }
         }
 
         if (state.tokensPerSecond > 0f) {
