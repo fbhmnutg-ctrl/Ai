@@ -156,4 +156,40 @@ class ExampleRobolectricTest {
     val cleanedDeepSeek = com.example.engine.ChatTemplateEngine.cleanModelResponse(rawDeepSeek)
     assertEquals("The answer is 4.", cleanedDeepSeek)
   }
+
+  @Test
+  fun `gemma and gamma model classification detects GEMMA architecture accurately`() {
+    val gammaArch = com.example.engine.ModelArchitecture.fromModel(
+      architecture = "gamma",
+      modelName = "gamma-2b-it",
+      filename = "gamma-2b-it-q4.gguf"
+    )
+    assertEquals(com.example.engine.ModelArchitecture.GEMMA, gammaArch)
+
+    val gemmaArch = com.example.engine.ModelArchitecture.fromModel(
+      architecture = "gemma2",
+      modelName = "gemma-2-2b-it",
+      filename = "gemma-2-2b-it-Q4_K_M.gguf"
+    )
+    assertEquals(com.example.engine.ModelArchitecture.GEMMA, gemmaArch)
+
+    val paligemmaArch = com.example.engine.ModelArchitecture.fromModel(
+      architecture = "",
+      modelName = "paligemma-3b",
+      filename = "paligemma-3b.gguf"
+    )
+    assertEquals(com.example.engine.ModelArchitecture.GEMMA, paligemmaArch)
+
+    val gammaTemplateFormat = com.example.engine.ChatTemplateEngine.detectFormat(
+      architecture = "gamma",
+      modelName = "gamma-2b-it",
+      filename = "gamma-2b.gguf"
+    )
+    assertEquals(com.example.engine.TemplateFormat.GEMMA, gammaTemplateFormat)
+
+    val prompt = "Explain gravity"
+    val formatted = com.example.engine.ChatTemplateEngine.formatPrompt(gammaArch, prompt)
+    assertEquals("<start_of_turn>user\nExplain gravity<end_of_turn>\n<start_of_turn>model\n", formatted)
+  }
 }
+

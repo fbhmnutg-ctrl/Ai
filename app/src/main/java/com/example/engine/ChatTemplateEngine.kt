@@ -17,12 +17,12 @@ enum class ModelArchitecture {
         fun fromModel(architecture: String, modelName: String = "", filename: String = ""): ModelArchitecture {
             val lower = "$architecture $modelName $filename".lowercase()
             return when {
-                "gemma" in lower -> GEMMA
-                "llama-3" in lower || "llama 3" in lower || "llama3" in lower || "llama" in lower -> LLAMA_3
+                "gemma" in lower || "gamma" in lower || "codegemma" in lower || "paligemma" in lower || "google" in lower -> GEMMA
                 "qwen" in lower -> QWEN
                 "mistral" in lower || "mixtral" in lower -> MISTRAL
                 "deepseek" in lower -> DEEPSEEK
-                else -> LLAMA_3
+                "llama" in lower || "alpaca" in lower || "vicuna" in lower -> LLAMA_3
+                else -> OTHER
             }
         }
     }
@@ -68,13 +68,11 @@ object ChatTemplateEngine {
     fun detectFormat(architecture: String, modelName: String, filename: String): TemplateFormat {
         val lower = "$architecture $modelName $filename".lowercase()
         return when {
-            "gemma" in lower -> TemplateFormat.GEMMA
-            "llama-3" in lower || "llama 3" in lower || "llama3" in lower -> TemplateFormat.LLAMA3
-            "qwen" in lower -> TemplateFormat.QWEN
+            "gemma" in lower || "gamma" in lower || "codegemma" in lower || "paligemma" in lower || "google" in lower -> TemplateFormat.GEMMA
+            "qwen" in lower || "chatml" in lower || "smol" in lower -> TemplateFormat.QWEN
             "mistral" in lower || "mixtral" in lower -> TemplateFormat.MISTRAL
             "deepseek" in lower -> TemplateFormat.DEEPSEEK
             "alpaca" in lower -> TemplateFormat.ALPACA
-            "smol" in lower || "chatml" in lower -> TemplateFormat.QWEN
             "llama" in lower -> TemplateFormat.LLAMA3
             else -> TemplateFormat.LLAMA3
         }

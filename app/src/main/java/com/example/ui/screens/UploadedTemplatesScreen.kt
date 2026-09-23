@@ -325,6 +325,9 @@ fun UploadedTemplatesScreen(
                 onChat = {
                     viewModel.inspectModel(null)
                     onModelSelectedForChat(model)
+                },
+                onUpdateArchitecture = { newArch ->
+                    viewModel.updateModelArchitecture(model, newArch)
                 }
             )
         }
@@ -609,6 +612,7 @@ fun AddCustomTemplateDialog(
     var parameterCount by remember { mutableStateOf("1.5B") }
     var downloadUrl by remember { mutableStateOf("") }
 
+    val commonArchitectures = listOf("gemma", "llama", "qwen2", "mistral", "deepseek", "phi3")
     val commonQuants = listOf("Q6_K_P", "Q6_K", "Q8_0", "Q5_K_M", "Q4_K_M", "IQ4_NL", "IQ3_XXS", "Q3_K_M", "FP16")
     val quantInfo = QuantizationEngine.find(quantization)
 
@@ -639,13 +643,25 @@ fun AddCustomTemplateDialog(
                     value = name,
                     onValueChange = { 
                         name = it
+                        val lower = it.lowercase()
+                        if ("gemma" in lower || "gamma" in lower || "codegemma" in lower || "paligemma" in lower) {
+                            architecture = "gemma"
+                        } else if ("qwen" in lower) {
+                            architecture = "qwen2"
+                        } else if ("deepseek" in lower) {
+                            architecture = "deepseek"
+                        } else if ("mistral" in lower || "mixtral" in lower) {
+                            architecture = "mistral"
+                        } else if ("phi" in lower) {
+                            architecture = "phi3"
+                        }
                         val extracted = QuantizationEngine.extractFromFilename(it)
                         if (extracted != "Q4_K_M") {
                             quantization = extracted
                         }
                     },
                     label = { Text("Template Name", color = TextSecondary, fontSize = 11.sp) },
-                    placeholder = { Text("e.g., DeepSeek R1 Q6_K_P Custom", color = TextMuted, fontSize = 11.sp) },
+                    placeholder = { Text("e.g., Gemma 2 2B Q6_K_P Custom", color = TextMuted, fontSize = 11.sp) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
@@ -656,6 +672,37 @@ fun AddCustomTemplateDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Quick Architecture Selection Chips
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Select Model Architecture:", color = TextMuted, fontSize = 10.sp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(commonArchitectures) { archItem ->
+                            val isSelected = architecture.equals(archItem, ignoreCase = true)
+                            Surface(
+                                modifier = Modifier.clickable { architecture = archItem },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelected) NeonCyanSubtle else ObsidianSurface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (isSelected) 1.dp else 0.5.dp,
+                                    if (isSelected) NeonCyan else ObsidianBorder
+                                )
+                            ) {
+                                Text(
+                                    text = archItem.uppercase(),
+                                    color = if (isSelected) NeonCyan else TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -664,7 +711,7 @@ fun AddCustomTemplateDialog(
                         value = architecture,
                         onValueChange = { architecture = it },
                         label = { Text("Architecture", color = TextSecondary, fontSize = 10.sp) },
-                        placeholder = { Text("llama, qwen2, deepseek2", color = TextMuted, fontSize = 11.sp) },
+                        placeholder = { Text("gemma, llama, qwen2, deepseek", color = TextMuted, fontSize = 11.sp) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimary,
@@ -825,8 +872,11 @@ fun AddCustomTemplateDialog(
 fun UploadedModelInspectorDialog(
     model: LocalModelEntity,
     onDismiss: () -> Unit,
-    onChat: () -> Unit
+    onChat: () -> Unit,
+    onUpdateArchitecture: (String) -> Unit
 ) {
+    val commonArchitectures = listOf("gemma", "llama", "qwen2", "mistral", "deepseek", "phi3")
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianCard,
@@ -852,7 +902,7 @@ fun UploadedModelInspectorDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 InspectorRow(label = "Filename", value = model.filename)
-                InspectorRow(label = "Architecture", value = model.architecture)
+                InspectorRow(label = "Active Architecture", value = model.architecture.uppercase())
                 InspectorRow(label = "Quantization", value = model.quantization)
                 InspectorRow(label = "Context Length", value = "${model.contextLength} tokens")
                 InspectorRow(label = "Parameters", value = model.parameterCount)
@@ -860,6 +910,37 @@ fun UploadedModelInspectorDialog(
                 InspectorRow(label = "Storage Size", value = String.format("%.1f MB", model.sizeBytes / (1024.0 * 1024.0)))
                 InspectorRow(label = "Local Path", value = model.filePath ?: "In-App Memory Map")
                 InspectorRow(label = "Engine Pipeline", value = "llama.cpp ARM64 NEON")
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "Reassign Template Architecture:", color = TextMuted, fontSize = 10.sp)
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(commonArchitectures) { archItem ->
+                        val isCurrent = model.architecture.equals(archItem, ignoreCase = true)
+                        Surface(
+                            modifier = Modifier.clickable {
+                                if (!isCurrent) onUpdateArchitecture(archItem)
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isCurrent) NeonCyanSubtle else ObsidianSurface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                if (isCurrent) 1.dp else 0.5.dp,
+                                if (isCurrent) NeonCyan else ObsidianBorder
+                            )
+                        ) {
+                            Text(
+                                text = archItem.uppercase(),
+                                color = if (isCurrent) NeonCyan else TextSecondary,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
             }
         },
         confirmButton = {

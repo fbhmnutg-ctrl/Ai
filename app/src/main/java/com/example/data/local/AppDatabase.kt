@@ -136,6 +136,25 @@ abstract class AppDatabase : RoomDatabase() {
                         downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
                     ),
                     LocalModelEntity(
+                        id = "gemma-2-2b-instruct-q4-k-m",
+                        name = "Gemma 2 2B (Google DeepMind)",
+                        filename = "gemma-2-2b-it-Q4_K_M.gguf",
+                        architecture = "gemma",
+                        quantization = "Q4_K_M",
+                        parameterCount = "2.6B",
+                        sizeBytes = 1630000000L, // ~1.55 GB
+                        requiredRamMb = 2300,
+                        contextLength = 4096,
+                        isDownloaded = false,
+                        downloadProgress = 0f,
+                        filePath = null,
+                        source = "LOCAL_GGUF",
+                        description = "Google DeepMind's Gemma 2. Advanced multi-head attention and alternating sliding-window attention for state-of-the-art 2B reasoning.",
+                        isFavorite = true,
+                        lastUsedTimestamp = System.currentTimeMillis() - 50000,
+                        downloadUrl = "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf"
+                    ),
+                    LocalModelEntity(
                         id = "deepseek-r1-1.5b-iq4-nl",
                         name = "DeepSeek-R1 1.5B (IQ4_NL I-Matrix)",
                         filename = "DeepSeek-R1-Distill-Qwen-1.5B-IQ4_NL.gguf",

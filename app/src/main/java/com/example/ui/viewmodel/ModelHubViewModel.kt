@@ -133,6 +133,15 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateModelArchitecture(model: LocalModelEntity, newArchitecture: String) {
+        viewModelScope.launch {
+            val updated = model.copy(architecture = newArchitecture.trim().lowercase())
+            modelRepository.updateModel(updated)
+            _inspectingModel.value = updated
+            _importStatusMessage.value = "Model architecture updated to '$newArchitecture'."
+        }
+    }
+
     fun addCustomTemplate(
         name: String,
         architecture: String = "llama",
