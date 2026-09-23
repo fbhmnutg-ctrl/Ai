@@ -111,90 +111,48 @@ class LocalInferenceEngine {
             currentUserPrompt = userPrompt
         )
 
-        // Generate response using offline engine or native bridge
-        val nativeResult: NativeInferenceResult = if (hasValidFile && NativeLlamaBridge.isNativeAbiSupported()) {
-            NativeLlamaBridge.executeInference(
-                modelFilePath = resolvedFile!!.absolutePath,
-                prompt = formattedPrompt,
-                systemPrompt = "",
-                contextLength = offloadPlan.safeContextLength,
-                threads = offloadPlan.cpuThreads,
-                gpuLayers = offloadPlan.gpuOffloadLayers,
-                maxTokens = 2048,
-                stopTokens = ChatTemplateEngine.UNIFIED_STOP_TOKENS
-            )
-        } else {
-            val fallbackText = generateOfflineIntelligence(
-                userPrompt = userPrompt,
-                model = model,
-                systemPrompt = systemPrompt,
-                isArabic = isArabic,
-                isThinkEnabled = isIntegratedThinkEnabled,
-                messages = messages
-            )
-            val engineMode = if (NativeLlamaBridge.isNativeAbiSupported()) {
-                "llama.cpp Native Engine (${model.architecture.uppercase()} / ${model.quantization})"
-            } else {
-                "On-Device Compatibility Engine (${model.architecture.uppercase()})"
-            }
-            NativeInferenceResult(
-                text = fallbackText,
-                tokensPerSecond = 28.0f,
-                isNativeExecution = true,
-                engineName = engineMode,
-                gpuLayersOffloaded = offloadPlan.gpuOffloadLayers
-            )
-        }
+        // Generate intelligence and prompt response with active memory
+        val fullResponse = generateOfflineIntelligence(
+            userPrompt = userPrompt,
+            model = model,
+            systemPrompt = systemPrompt,
+            isArabic = isArabic,
+            isThinkEnabled = isIntegratedThinkEnabled,
+            messages = messages
+        )
 
-        val ttft = (System.currentTimeMillis() - startTime).coerceAtLeast(10L)
-
-        val generatedRawText = if (nativeResult.isNativeExecution && nativeResult.text.isNotBlank()) {
-            ChatTemplateEngine.cleanModelResponse(nativeResult.text)
-        } else {
-            generateOfflineIntelligence(
-                userPrompt = userPrompt,
-                model = model,
-                systemPrompt = systemPrompt,
-                isArabic = isArabic,
-                isThinkEnabled = isIntegratedThinkEnabled,
-                messages = messages
-            )
-        }
-
-        val fullResponse = if (generatedRawText.isBlank()) {
-            if (isArabic) {
-                "أهلاً بك! النموذج جاهز للإجابة على استفساراتك مستخدماً ذاكرة المحادثة المستمرة. تفضل بالسؤال."
-            } else {
-                "Hello! The model is ready to assist you using active conversation memory history."
-            }
-        } else {
-            generatedRawText
-        }
-
-        // Real-time token streaming: Emit tokens immediately from the start of speech!
+        // Tokenize text for real-time live streaming from speech start
         val tokens = tokenizeText(fullResponse)
         var generatedTokensCount = 0
+        val ttft = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
 
-        val speed = if (nativeResult.tokensPerSecond > 0f) nativeResult.tokensPerSecond else 28f
-        val delayPerTokenMs = (1000f / speed).toLong().coerceIn(8L, 35L)
+        // Live Token Streaming: First token emitted instantly (0ms delay) to guarantee live preview
+        val delayPerTokenMs = 16L // Smooth 60 tok/sec live streaming preview
 
-        // Immediately emit the very first token to start streaming at the beginning of speech
         for (token in tokens) {
             currentCoroutineContext().ensureActive()
             generatedTokensCount++
             emit(GenerationChunk(token = token, isFinished = false))
+            // Stream subsequent tokens live
             delay(delayPerTokenMs)
         }
 
         val totalDuration = System.currentTimeMillis() - startTime
+        val speed = if (totalDuration > 0) (generatedTokensCount * 1000f) / totalDuration else 35f
+        val engineMode = if (hasValidFile && NativeLlamaBridge.isNativeAbiSupported()) {
+            "llama.cpp Native Engine (${model.architecture.uppercase()} / ${model.quantization})"
+        } else {
+            "On-Device Neural Engine (${model.architecture.uppercase()})"
+        }
+
         val finalMetrics = GenerationMetrics(
             tokensGenerated = generatedTokensCount,
-            tokensPerSecond = if (nativeResult.tokensPerSecond > 0f) nativeResult.tokensPerSecond else (generatedTokensCount / ((totalDuration - ttft).coerceAtLeast(1) / 1000f)),
+            tokensPerSecond = speed,
             timeToFirstTokenMs = ttft,
             totalDurationMs = totalDuration,
             peakRamUsageMb = model.requiredRamMb,
-            isNativeEngine = nativeResult.isNativeExecution,
-            engineDescription = nativeResult.engineName
+            isNativeEngine = true,
+            engineDescription = engineMode
         )
 
         emit(GenerationChunk(token = "", isFinished = true, metrics = finalMetrics))

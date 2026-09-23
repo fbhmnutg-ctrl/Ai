@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/pocket_ollama_icon_1790116779845"
+        android:drawable="@drawable/app_launcher_icon_1790187683421"
         android:gravity="center" />
 </layer-list>
