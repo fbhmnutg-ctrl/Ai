@@ -32,6 +32,28 @@ class SettingsManager private constructor(context: Context) {
     private val _contextLength = MutableStateFlow(prefs.getInt(KEY_CONTEXT_LENGTH, 2048))
     val contextLength: StateFlow<Int> = _contextLength.asStateFlow()
 
+    // Text Display Streaming Toggle (Real-time vs Instant full response)
+    private val _isStreamingEnabled = MutableStateFlow(prefs.getBoolean(KEY_STREAMING_ENABLED, true))
+    val isStreamingEnabled: StateFlow<Boolean> = _isStreamingEnabled.asStateFlow()
+
+    // Integrated Thinking Mode (Think button next to chat input box)
+    private val _isIntegratedThinkEnabled = MutableStateFlow(prefs.getBoolean(KEY_INTEGRATED_THINK_ENABLED, false))
+    val isIntegratedThinkEnabled: StateFlow<Boolean> = _isIntegratedThinkEnabled.asStateFlow()
+
+    // Developer Theme Preset ("CATPPUCCIN", "TOKYO_NIGHT", "GITHUB_DARK", "MONOKAI", "VS_CODE")
+    private val _appTheme = MutableStateFlow(prefs.getString(KEY_APP_THEME, "CATPPUCCIN") ?: "CATPPUCCIN")
+    val appTheme: StateFlow<String> = _appTheme.asStateFlow()
+
+    fun setAppTheme(theme: String) {
+        prefs.edit().putString(KEY_APP_THEME, theme).apply()
+        _appTheme.value = theme
+    }
+
+    fun setStreamingEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_STREAMING_ENABLED, enabled).apply()
+        _isStreamingEnabled.value = enabled
+    }
+
     fun setAmprEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AMPR_ENABLED, enabled).apply()
         _isAmprEnabled.value = enabled
@@ -63,6 +85,16 @@ class SettingsManager private constructor(context: Context) {
         _amprKPaths.value = clamped
     }
 
+    fun setIntegratedThinkEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_INTEGRATED_THINK_ENABLED, enabled).apply()
+        _isIntegratedThinkEnabled.value = enabled
+    }
+
+    fun toggleIntegratedThink() {
+        val nextState = !_isIntegratedThinkEnabled.value
+        setIntegratedThinkEnabled(nextState)
+    }
+
     fun setCpuThreads(threads: Int) {
         val clamped = threads.coerceIn(1, 8)
         prefs.edit().putInt(KEY_CPU_THREADS, clamped).apply()
@@ -82,6 +114,9 @@ class SettingsManager private constructor(context: Context) {
         private const val KEY_DEEP_REASONING_EFFORT = "key_deep_reasoning_effort"
         private const val KEY_CPU_THREADS = "key_cpu_threads"
         private const val KEY_CONTEXT_LENGTH = "key_context_length"
+        private const val KEY_STREAMING_ENABLED = "key_streaming_enabled"
+        private const val KEY_INTEGRATED_THINK_ENABLED = "key_integrated_think_enabled"
+        private const val KEY_APP_THEME = "key_app_theme"
 
         @Volatile
         private var INSTANCE: SettingsManager? = null

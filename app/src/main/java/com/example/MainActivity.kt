@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.screens.BenchmarkScreen
 import com.example.ui.screens.ChatScreen
 import com.example.ui.screens.ModelHubScreen
@@ -89,20 +91,26 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            MyApplicationTheme {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val settingsManager = remember { com.example.data.local.SettingsManager.getInstance(context) }
+            val currentAppTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+
+            MyApplicationTheme(themeId = currentAppTheme) {
+                val devTheme = com.example.ui.theme.LocalDevTheme.current
                 var currentTab by rememberSaveable { mutableStateOf(AppDestination.CHAT) }
 
                 Scaffold(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ObsidianBg),
+                        .background(devTheme.bg),
                     bottomBar = {
                         NavigationBar(
                             modifier = Modifier
-                                .border(1.dp, ObsidianBorder)
+                                .border(0.5.dp, devTheme.border)
                                 .windowInsetsPadding(WindowInsets.navigationBars),
-                            containerColor = ObsidianSurface,
-                            contentColor = TextPrimary
+                            containerColor = devTheme.surface,
+                            contentColor = devTheme.textPrimary,
+                            tonalElevation = 0.dp
                         ) {
                             val navItems = listOf(
                                 AppDestination.CHAT,
@@ -120,21 +128,22 @@ class MainActivity : ComponentActivity() {
                                         Icon(
                                             imageVector = if (isSelected) destination.selectedIcon else destination.unselectedIcon,
                                             contentDescription = destination.title,
-                                            modifier = Modifier.size(22.dp)
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     },
                                     label = {
                                         Text(
                                             text = destination.title,
-                                            fontSize = 11.sp
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal
                                         )
                                     },
                                     colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = NeonCyan,
-                                        selectedTextColor = NeonCyan,
-                                        indicatorColor = NeonCyanSubtle,
-                                        unselectedIconColor = TextMuted,
-                                        unselectedTextColor = TextMuted
+                                        selectedIconColor = devTheme.primary,
+                                        selectedTextColor = devTheme.primary,
+                                        indicatorColor = devTheme.primary.copy(alpha = 0.15f),
+                                        unselectedIconColor = devTheme.textMuted,
+                                        unselectedTextColor = devTheme.textMuted
                                     ),
                                     modifier = Modifier.testTag(destination.testTag)
                                 )

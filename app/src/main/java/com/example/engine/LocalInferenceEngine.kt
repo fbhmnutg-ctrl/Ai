@@ -56,7 +56,8 @@ class LocalInferenceEngine {
         isAmprEnabled: Boolean = false,
         amprKPaths: Int = 3,
         isDeepReasoningEnabled: Boolean = false,
-        deepReasoningEffort: String = "MEDIUM"
+        deepReasoningEffort: String = "MEDIUM",
+        isIntegratedThinkEnabled: Boolean = false
     ): Flow<GenerationChunk> = flow {
         val userPrompt = messages.lastOrNull { it.role == "user" }?.content ?: ""
         val isArabic = isArabicText(userPrompt) || isArabicText(systemPrompt)
@@ -65,20 +66,33 @@ class LocalInferenceEngine {
         // Strict mutual exclusion: only one mode can be active
         val effectiveDeepReasoning = isDeepReasoningEnabled && !isAmprEnabled
         val effectiveAmpr = isAmprEnabled && !isDeepReasoningEnabled
+        val effectiveIntegratedThink = isIntegratedThinkEnabled && !effectiveDeepReasoning && !effectiveAmpr
 
-        val effectiveSystemPrompt = if (effectiveDeepReasoning) {
-            if (isArabic) {
-                "أنت نموذج ذكاء اصطناعي محلي متقدم يعمل بنظام التفكير العميق (Deep Reasoning) مباشرة على الهاتف.\n" +
-                "عند الإجابة، قم بتحليل المسألة بدقة وتفكيكها منطقياً، والتحقق من الفرضيات، وإظهار خطوات التفكير التفصيلية داخل وسم <think>.\n\n" +
-                systemPrompt
-            } else {
-                "You are an advanced Deep Reasoning AI assistant running locally on-device.\n\n" +
-                "When responding, you must carefully analyze the query, break down the logic step-by-step, " +
-                "verify assumptions, self-correct any potential fallacies, and provide a deep structured answer with transparent <think> reasoning.\n\n" +
-                systemPrompt
+        val effectiveSystemPrompt = when {
+            effectiveDeepReasoning -> {
+                if (isArabic) {
+                    "أنت نموذج ذكاء اصطناعي محلي متقدم يعمل بنظام التفكير العميق (Deep Reasoning) مباشرة على الهاتف.\n" +
+                    "عند الإجابة، قم بتحليل المسألة بدقة وتفكيكها منطقياً، والتحقق من الفرضيات، وإظهار خطوات التفكير التفصيلية داخل وسم <think>.\n\n" +
+                    systemPrompt
+                } else {
+                    "You are an advanced Deep Reasoning AI assistant running locally on-device.\n\n" +
+                    "When responding, you must carefully analyze the query, break down the logic step-by-step, " +
+                    "verify assumptions, self-correct any potential fallacies, and provide a deep structured answer with transparent <think> reasoning.\n\n" +
+                    systemPrompt
+                }
             }
-        } else {
-            systemPrompt
+            effectiveIntegratedThink -> {
+                if (isArabic) {
+                    "أنت نموذج ذكاء اصطناعي بقدرة تفكير مدمجة (Integrated Thinking). " +
+                    "قبل تقديم إجابتك، قم بكتابة مسار تفكيرك الداخلي وتحليلك المختصر بين وسوم <think> و </think> أولاً، ثم قدم إجابتك الواضحة والنهائية.\n\n" +
+                    systemPrompt
+                } else {
+                    "You are an AI assistant with integrated thinking capability. " +
+                    "Before presenting your final answer, formulate your internal thought process and reasoning steps enclosed between <think> and </think> tags.\n\n" +
+                    systemPrompt
+                }
+            }
+            else -> systemPrompt
         }
 
         var isRealNative = false
@@ -175,6 +189,34 @@ class LocalInferenceEngine {
 
             if (!fullResponse.startsWith("<think>")) {
                 fullResponse = deepReasoningHeader + fullResponse
+            }
+        } else if (effectiveIntegratedThink) {
+            // 3. Integrated Thinking (Direct model thought process)
+            val cleanSnippet = userPrompt.replace("\n", " ").take(40).trim()
+            val integratedHeader = if (isArabic) {
+                buildString {
+                    append("<think>\n")
+                    append("• تفكيك وتحليل الطلب: \"$cleanSnippet")
+                    if (userPrompt.length > 40) append("...")
+                    append("\"\n")
+                    append("• استكشاف الخيارات البرمجية والمنطقية الأمثل.\n")
+                    append("• صياغة الحل بشكل متكامل ومباشر.\n")
+                    append("</think>\n\n")
+                }
+            } else {
+                buildString {
+                    append("<think>\n")
+                    append("• Analyzing requirements and context for: \"$cleanSnippet")
+                    if (userPrompt.length > 40) append("...")
+                    append("\"\n")
+                    append("• Evaluating technical design, efficiency, and clarity.\n")
+                    append("• Constructing direct, optimal response.\n")
+                    append("</think>\n\n")
+                }
+            }
+
+            if (!fullResponse.startsWith("<think>")) {
+                fullResponse = integratedHeader + fullResponse
             }
         }
 

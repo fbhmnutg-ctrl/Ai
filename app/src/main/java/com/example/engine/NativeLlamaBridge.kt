@@ -44,13 +44,42 @@ object NativeLlamaBridge {
         }
     }
 
+    suspend fun preloadModelIntoMemory(
+        modelFilePath: String,
+        contextLength: Int = 2048,
+        threads: Int = 4
+    ): Boolean = withContext(Dispatchers.IO) {
+        val file = File(modelFilePath)
+        if (!file.exists()) return@withContext false
+        try {
+            if (loadedModelPath == modelFilePath && loadedModelHandle != null) {
+                return@withContext true
+            }
+            releaseCurrentModel()
+            Log.i(TAG, "Pre-loading native GGUF model into memory: $modelFilePath")
+            val loaded = Llama.loadModel(
+                modelPath = file.absolutePath,
+                config = LlamaConfig(
+                    contextSize = contextLength.coerceIn(512, 4096),
+                    threads = threads.coerceIn(1, 8)
+                )
+            )
+            loadedModelHandle = loaded
+            loadedModelPath = modelFilePath
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to preload native model: ${t.message}")
+            false
+        }
+    }
+
     suspend fun executeInference(
         modelFilePath: String,
         prompt: String,
         systemPrompt: String,
         contextLength: Int = 2048,
         threads: Int = 4,
-        maxTokens: Int = 512
+        maxTokens: Int = 2048
     ): NativeInferenceResult = withContext(Dispatchers.IO) {
         val file = File(modelFilePath)
         if (!file.exists()) {

@@ -2,28 +2,32 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Obsidian & Dark OLED Surface Palette
-val ObsidianBg = Color(0xFF090B0E)
-val ObsidianSurface = Color(0xFF11141B)
-val ObsidianCard = Color(0xFF181D26)
-val ObsidianCardHover = Color(0xFF202633)
-val ObsidianBorder = Color(0xFF273142)
-val ObsidianBorderLight = Color(0xFF37445C)
+// Minimalist Charcoal & OLED Surface Palette (Refined & Modern)
+val ObsidianBg = Color(0xFF0D0F12)
+val ObsidianSurface = Color(0xFF14171C)
+val ObsidianCard = Color(0xFF1B1F26)
+val ObsidianCardHover = Color(0xFF242A34)
+val ObsidianBorder = Color(0xFF2B313D)
+val ObsidianBorderLight = Color(0xFF38404E)
 
-// Futuristic AI Accent Palette
-val NeonCyan = Color(0xFF00E5FF)
-val NeonCyanDim = Color(0xFF00B4D8)
-val NeonCyanSubtle = Color(0x1F00E5FF)
+// Refined Minimalist Accents
+val NeonCyan = Color(0xFF38BDF8)          // Modern Sky Azure
+val NeonCyanDim = Color(0xFF0284C7)
+val NeonCyanSubtle = Color(0x1A38BDF8)
 
-val EmeraldGlow = Color(0xFF10B981)
-val EmeraldGlowSubtle = Color(0x1F10B981)
+val EmeraldGlow = Color(0xFF34D399)       // Clean Mint Emerald
+val EmeraldGlowSubtle = Color(0x1A34D399)
 
-val VioletNeural = Color(0xFFA78BFA)
+val VioletNeural = Color(0xFFA78BFA)      // Soft Lavender
 val AmberWarning = Color(0xFFFBBF24)
 val CrimsonError = Color(0xFFF87171)
 
-// Crisp Text Hierarchy
-val TextPrimary = Color(0xFFF8FAFC)
-val TextSecondary = Color(0xFF94A3B8)
-val TextMuted = Color(0xFF64748B)
+// Chat Bubbles & Highlights
+val UserBubbleBg = Color(0xFF1E293B)
+val UserBubbleBorder = Color(0xFF334155)
+
+// Refined Typography Hierarchy
+val TextPrimary = Color(0xFFF4F4F6)
+val TextSecondary = Color(0xFFA1A1AA)
+val TextMuted = Color(0xFF71717A)
 val TextCode = Color(0xFF38BDF8)

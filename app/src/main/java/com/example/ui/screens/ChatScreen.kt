@@ -6,17 +6,19 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,24 +37,26 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ClearAll
-import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -64,7 +68,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -73,7 +76,6 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -86,10 +88,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -98,29 +99,16 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.R
+import com.example.data.local.SettingsManager
 import com.example.data.local.entity.ChatMessage
 import com.example.data.local.entity.LocalModelEntity
 import com.example.engine.LocalInferenceEngine
-import kotlinx.coroutines.launch
 import com.example.ui.components.CodeBlockView
-import com.example.ui.components.EngineBadge
-import com.example.ui.components.GgufTag
-import com.example.ui.components.MetricChip
-import com.example.ui.theme.EmeraldGlow
-import com.example.ui.theme.NeonCyan
-import com.example.ui.theme.NeonCyanDim
-import com.example.ui.theme.NeonCyanSubtle
-import com.example.ui.theme.ObsidianBg
-import com.example.ui.theme.ObsidianBorder
-import com.example.ui.theme.ObsidianCard
-import com.example.ui.theme.ObsidianCardHover
-import com.example.ui.theme.ObsidianSurface
-import com.example.ui.theme.TextMuted
-import com.example.ui.theme.TextPrimary
-import com.example.ui.theme.TextSecondary
-import com.example.ui.theme.VioletNeural
+import com.example.ui.theme.AllDevThemes
+import com.example.ui.theme.DevThemeColors
+import com.example.ui.theme.LocalDevTheme
 import com.example.ui.viewmodel.ChatViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -131,6 +119,11 @@ fun ChatScreen(
     onNavigateToUploaded: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val devTheme = LocalDevTheme.current
+    val context = LocalContext.current
+    val settingsManager = remember { SettingsManager.getInstance(context) }
+    val currentAppTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
+
     val messages by viewModel.currentMessages.collectAsStateWithLifecycle()
     val activeModel by viewModel.activeModel.collectAsStateWithLifecycle()
     val selectedEngine by viewModel.selectedEngine.collectAsStateWithLifecycle()
@@ -141,6 +134,8 @@ fun ChatScreen(
     val templateSelectionList by viewModel.templateSelectionList.collectAsStateWithLifecycle()
     val isAmprEnabled by viewModel.isAmprEnabled.collectAsStateWithLifecycle()
     val isDeepReasoningEnabled by viewModel.isDeepReasoningEnabled.collectAsStateWithLifecycle()
+    val isIntegratedThinkEnabled by viewModel.isIntegratedThinkEnabled.collectAsStateWithLifecycle()
+    val modelLoadingState by viewModel.modelLoadingState.collectAsStateWithLifecycle()
 
     val temperature by viewModel.temperature.collectAsStateWithLifecycle()
     val topP by viewModel.topP.collectAsStateWithLifecycle()
@@ -150,6 +145,8 @@ fun ChatScreen(
     var showParamsSheet by remember { mutableStateOf(false) }
     var showSessionsMenu by remember { mutableStateOf(false) }
     var showModelSelectorMenu by remember { mutableStateOf(false) }
+    var showThemeMenu by remember { mutableStateOf(false) }
+
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     var userManuallyScrolledUp by remember { mutableStateOf(false) }
@@ -165,7 +162,7 @@ fun ChatScreen(
         }
     }
 
-    // Detect if user is manually scrolling up to inspect history
+    // Detect if user is manually scrolling up
     LaunchedEffect(listState.isScrollInProgress) {
         if (listState.isScrollInProgress) {
             val totalItems = messages.size + (if (generationState.isGenerating) 1 else 0)
@@ -203,69 +200,123 @@ fun ChatScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(ObsidianBg)
+            .background(devTheme.bg)
     ) {
-        // Top App Bar
-        TopChatHeader(
+        // Minimalist Top Developer Header
+        MinimalTopChatHeader(
             activeModel = activeModel,
             selectedEngine = selectedEngine,
+            isLoadedInMemory = modelLoadingState.isLoadedInMemory,
+            currentThemeIcon = devTheme.icon,
             onModelClick = { showModelSelectorMenu = true },
+            onThemeClick = { showThemeMenu = true },
             onNewChat = { viewModel.createNewSession() },
             onOpenSettings = { showParamsSheet = true },
             onToggleSessions = { showSessionsMenu = true }
         )
 
-        // Template Selection Dropdown Menu (Max 5 templates + Unload Option)
+        // Dropdown Menu for Quick Theme Switching
         DropdownMenu(
-            expanded = showModelSelectorMenu,
-            onDismissRequest = { showModelSelectorMenu = false },
+            expanded = showThemeMenu,
+            onDismissRequest = { showThemeMenu = false },
             modifier = Modifier
-                .background(ObsidianCard)
-                .border(1.dp, ObsidianBorder, RoundedCornerShape(8.dp))
-                .widthIn(min = 280.dp, max = 340.dp)
+                .background(devTheme.card)
+                .border(0.5.dp, devTheme.border, RoundedCornerShape(12.dp))
+                .widthIn(min = 240.dp)
         ) {
             Text(
-                text = "SELECT TEMPLATE (MAX 5)",
-                color = NeonCyan,
+                text = "DEVELOPER THEME",
+                color = devTheme.primary,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            // Strictly maximum 5 templates as requested by user
+            AllDevThemes.forEach { preset ->
+                val isSelected = preset.id.equals(currentAppTheme, ignoreCase = true)
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(preset.icon, fontSize = 15.sp)
+                            Text(
+                                text = preset.name,
+                                color = if (isSelected) devTheme.primary else devTheme.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    },
+                    trailingIcon = {
+                        if (isSelected) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = devTheme.primary, modifier = Modifier.size(16.dp))
+                        }
+                    },
+                    onClick = {
+                        settingsManager.setAppTheme(preset.id)
+                        showThemeMenu = false
+                    }
+                )
+            }
+        }
+
+        // Dropdown Menu for Model Selection
+        DropdownMenu(
+            expanded = showModelSelectorMenu,
+            onDismissRequest = { showModelSelectorMenu = false },
+            modifier = Modifier
+                .background(devTheme.card)
+                .border(0.5.dp, devTheme.border, RoundedCornerShape(12.dp))
+                .widthIn(min = 280.dp, max = 340.dp)
+        ) {
+            Text(
+                text = "SELECT MODEL",
+                color = devTheme.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
             val displayTemplates = templateSelectionList.take(5)
             displayTemplates.forEach { model ->
                 val isSelected = activeModel?.id == model.id
                 DropdownMenuItem(
                     text = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
                                 Text(
                                     text = model.name,
-                                    color = if (isSelected) NeonCyan else TextPrimary,
+                                    color = if (isSelected) devTheme.primary else devTheme.textPrimary,
                                     fontSize = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 )
-                                Text(
-                                    text = "${model.architecture} • ${model.quantization} • ${model.parameterCount}",
-                                    color = TextMuted,
-                                    fontSize = 10.sp
-                                )
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(devTheme.secondary)
+                                    )
+                                }
                             }
-                            if (isSelected) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "Active",
-                                    tint = NeonCyan,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+                            Text(
+                                text = "${model.architecture.uppercase()} • ${model.quantization} • ${model.parameterCount}",
+                                color = devTheme.textMuted,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    },
+                    trailingIcon = {
+                        if (isSelected) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = devTheme.primary, modifier = Modifier.size(16.dp))
                         }
                     },
                     onClick = {
@@ -275,27 +326,25 @@ fun ChatScreen(
                 )
             }
 
-            HorizontalDivider(color = ObsidianBorder, thickness = 1.dp)
+            if (displayTemplates.isEmpty()) {
+                DropdownMenuItem(
+                    text = {
+                        Text("No downloaded models yet", color = devTheme.textMuted, fontSize = 12.sp)
+                    },
+                    onClick = {}
+                )
+            }
 
-            // Unload option to cancel model
+            HorizontalDivider(color = devTheme.border, modifier = Modifier.padding(vertical = 4.dp))
+
             DropdownMenuItem(
                 text = {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PowerSettingsNew,
-                            contentDescription = "Unload Model",
-                            tint = Color(0xFFEF4444),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "Unload Model from RAM",
-                            color = Color(0xFFEF4444),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Icon(Icons.Default.PowerSettingsNew, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                        Text("Unload Model from RAM", color = Color(0xFFEF4444), fontSize = 12.sp)
                     }
                 },
                 onClick = {
@@ -304,21 +353,14 @@ fun ChatScreen(
                 }
             )
 
-            HorizontalDivider(color = ObsidianBorder, thickness = 1.dp)
-
             DropdownMenuItem(
                 text = {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudUpload,
-                            contentDescription = null,
-                            tint = NeonCyan,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text("Manage Uploaded Templates...", color = TextPrimary, fontSize = 12.sp)
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, tint = devTheme.primary, modifier = Modifier.size(16.dp))
+                        Text("Manage Uploaded Models...", color = devTheme.textPrimary, fontSize = 12.sp)
                     }
                 },
                 onClick = {
@@ -333,13 +375,8 @@ fun ChatScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Memory,
-                            contentDescription = null,
-                            tint = VioletNeural,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text("Browse GGUF Hub...", color = TextPrimary, fontSize = 12.sp)
+                        Icon(Icons.Default.Memory, contentDescription = null, tint = devTheme.tertiary, modifier = Modifier.size(16.dp))
+                        Text("Browse GGUF Hub...", color = devTheme.textPrimary, fontSize = 12.sp)
                     }
                 },
                 onClick = {
@@ -349,17 +386,17 @@ fun ChatScreen(
             )
         }
 
-        // Session Selector Dropdown Menu
+        // Sessions Menu
         DropdownMenu(
             expanded = showSessionsMenu,
             onDismissRequest = { showSessionsMenu = false },
             modifier = Modifier
-                .background(ObsidianCard)
-                .border(1.dp, ObsidianBorder, RoundedCornerShape(8.dp))
+                .background(devTheme.card)
+                .border(0.5.dp, devTheme.border, RoundedCornerShape(12.dp))
         ) {
             Text(
                 text = "Conversations",
-                color = TextSecondary,
+                color = devTheme.textSecondary,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -370,13 +407,13 @@ fun ChatScreen(
                         Column {
                             Text(
                                 text = session.title,
-                                color = if (session.id == currentSessionId) NeonCyan else TextPrimary,
+                                color = if (session.id == currentSessionId) devTheme.primary else devTheme.textPrimary,
                                 fontSize = 13.sp,
                                 fontWeight = if (session.id == currentSessionId) FontWeight.Bold else FontWeight.Normal
                             )
                             Text(
                                 text = "${session.modelName} • ${session.engineType}",
-                                color = TextMuted,
+                                color = devTheme.textMuted,
                                 fontSize = 10.sp
                             )
                         }
@@ -404,72 +441,110 @@ fun ChatScreen(
             )
         }
 
-        // Active Reasoning Mode Sub-Bar
-        if (isDeepReasoningEnabled || isAmprEnabled) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = ObsidianSurface,
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, ObsidianBorder)
+        // Model Memory Loading Bar (Sleek Developer Progress)
+        AnimatedVisibility(
+            visible = modelLoadingState.isLoading,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(devTheme.surface)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (isDeepReasoningEnabled) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = VioletNeural,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = "Deep Reasoning AI Active",
-                                color = VioletNeural,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Psychology,
-                                contentDescription = null,
-                                tint = NeonCyan,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = "AMPR Multi-Path Active",
-                                color = NeonCyan,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Memory,
+                            contentDescription = null,
+                            tint = devTheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "Loading ${modelLoadingState.modelName} into RAM...",
+                            color = devTheme.textPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                     Text(
-                        text = if (isDeepReasoningEnabled) "CoT & Axiomatic Check" else "Minimal Entropy H(S)",
-                        color = TextMuted,
-                        fontSize = 10.sp,
+                        text = "${(modelLoadingState.progress * 100).toInt()}%",
+                        color = devTheme.primary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { modelLoadingState.progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = devTheme.primary,
+                    trackColor = devTheme.border
+                )
             }
         }
 
-        // Messages List or Empty State
+        // Active Reasoning Pill (Subtle top strip if enabled)
+        if (isDeepReasoningEnabled || isAmprEnabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(devTheme.surface.copy(alpha = 0.6f))
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isDeepReasoningEnabled) Icons.Default.AutoAwesome else Icons.Default.Psychology,
+                        contentDescription = null,
+                        tint = if (isDeepReasoningEnabled) devTheme.tertiary else devTheme.primary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = if (isDeepReasoningEnabled) "Deep Reasoning Active" else "AMPR Multi-Path Active",
+                        color = if (isDeepReasoningEnabled) devTheme.tertiary else devTheme.primary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Text(
+                    text = if (isDeepReasoningEnabled) "Chain-of-Thought" else "Adaptive Entropy",
+                    color = devTheme.textMuted,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+
+        // Messages List or Simple Beautiful Developer Empty State
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
             if (messages.isEmpty() && !generationState.isGenerating) {
-                ChatEmptyState(
+                BeautifulChatEmptyState(
                     activeModel = activeModel,
-                    onNavigateToModels = onNavigateToModels
+                    devTheme = devTheme,
+                    onPromptSelected = { prompt ->
+                        viewModel.onInputTextChanged(prompt)
+                    }
                 )
             } else {
                 LazyColumn(
@@ -479,18 +554,22 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(messages, key = { it.id }) { msg ->
-                        MessageItem(message = msg)
+                        CleanMessageItem(message = msg, devTheme = devTheme)
                     }
 
                     // Live streaming bubble if active
                     if (generationState.isGenerating) {
                         item {
-                            StreamingBubble(state = generationState, onStop = { viewModel.stopGeneration() })
+                            CleanStreamingBubble(
+                                state = generationState,
+                                devTheme = devTheme,
+                                onStop = { viewModel.stopGeneration() }
+                            )
                         }
                     }
                 }
 
-                // Floating Jump-to-Bottom badge when scrolled up
+                // Floating Jump-to-Bottom button
                 androidx.compose.animation.AnimatedVisibility(
                     visible = userManuallyScrolledUp && (generationState.isGenerating || !isAtBottom),
                     enter = fadeIn() + slideInVertically { it / 2 },
@@ -501,9 +580,9 @@ fun ChatScreen(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = ObsidianCard,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.7f)),
-                        shadowElevation = 6.dp,
+                        color = devTheme.card,
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.borderLight),
+                        shadowElevation = 4.dp,
                         modifier = Modifier.clickable {
                             userManuallyScrolledUp = false
                             coroutineScope.launch {
@@ -513,25 +592,21 @@ fun ChatScreen(
                         }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
+                                imageVector = Icons.Default.ArrowDownward,
                                 contentDescription = null,
-                                tint = NeonCyan,
-                                modifier = Modifier.size(16.dp)
+                                tint = devTheme.primary,
+                                modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = if (generationState.isGenerating) {
-                                    "الرد يكتمل الآن (${generationState.tokensPerSecond} tok/s) • اضغط للمتابعة"
-                                } else {
-                                    "الانتقال لآخر الرسائل ↓"
-                                },
-                                color = NeonCyan,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                text = "Scroll to bottom",
+                                color = devTheme.textPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
@@ -539,24 +614,28 @@ fun ChatScreen(
             }
         }
 
-        // Bottom Input Area
-        ChatInputBar(
+        // Floating Minimalist Developer Input Bar
+        CleanChatInputBar(
             text = inputText,
             isGenerating = generationState.isGenerating,
+            isThinkActive = isIntegratedThinkEnabled,
+            devTheme = devTheme,
             onTextChanged = { viewModel.onInputTextChanged(it) },
             onSend = { viewModel.sendMessage() },
             onStop = { viewModel.stopGeneration() },
+            onToggleThink = { viewModel.toggleIntegratedThink() },
             modifier = Modifier.imePadding()
         )
     }
 
     // Parameters Bottom Sheet
     if (showParamsSheet) {
-        ParametersBottomSheet(
+        CleanParametersBottomSheet(
             temperature = temperature,
             topP = topP,
             cpuThreads = cpuThreads,
             systemPrompt = systemPrompt,
+            devTheme = devTheme,
             onDismiss = { showParamsSheet = false },
             onSave = { temp, p, threads, prompt ->
                 viewModel.updateSettings(temp, p, threads, prompt)
@@ -566,113 +645,126 @@ fun ChatScreen(
     }
 }
 
+/**
+ * Minimal top developer header with quick theme switcher.
+ */
 @Composable
-fun TopChatHeader(
+fun MinimalTopChatHeader(
     activeModel: LocalModelEntity?,
     selectedEngine: String,
+    isLoadedInMemory: Boolean,
+    currentThemeIcon: String,
     onModelClick: () -> Unit,
+    onThemeClick: () -> Unit,
     onNewChat: () -> Unit,
     onOpenSettings: () -> Unit,
     onToggleSessions: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val devTheme = LocalDevTheme.current
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = ObsidianSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder)
+        color = devTheme.bg,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border.copy(alpha = 0.6f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Model Selector Chip
+            // Model Selector Capsule
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(ObsidianCard)
-                    .border(1.dp, ObsidianBorder, RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(devTheme.surface)
+                    .border(0.5.dp, devTheme.border, RoundedCornerShape(20.dp))
                     .clickable { onModelClick() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
+                        .size(6.dp)
                         .clip(CircleShape)
-                        .background(if (selectedEngine == "LOCAL_GGUF") NeonCyan else VioletNeural)
+                        .background(if (isLoadedInMemory) devTheme.secondary else devTheme.primary)
                 )
-                Column {
-                    Text(
-                        text = activeModel?.name ?: "Select Model",
-                        color = TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
-                    )
-                    Text(
-                        text = if (selectedEngine == "LOCAL_GGUF") "Local GGUF (${activeModel?.quantization ?: "Q4_K_M"})" else "Ollama Remote",
-                        color = TextMuted,
-                        fontSize = 10.sp
-                    )
-                }
+
+                Text(
+                    text = activeModel?.name ?: "Select Model",
+                    color = devTheme.textPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
                     contentDescription = "Switch Model",
-                    tint = TextSecondary,
+                    tint = devTheme.textSecondary,
                     modifier = Modifier.size(16.dp)
                 )
             }
 
-            // Quick Actions
+            // Clean Developer Actions
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                // Quick Theme Switcher
+                IconButton(
+                    onClick = onThemeClick,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(devTheme.surface)
+                ) {
+                    Text(text = currentThemeIcon, fontSize = 14.sp)
+                }
+
                 IconButton(
                     onClick = onToggleSessions,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(34.dp)
                         .testTag("conversations_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Conversations",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = Icons.Default.History,
+                        contentDescription = "History",
+                        tint = devTheme.textSecondary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 IconButton(
                     onClick = onOpenSettings,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(34.dp)
                         .testTag("chat_params_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Tune,
-                        contentDescription = "Tuning Parameters",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(19.dp)
+                        contentDescription = "Tuning",
+                        tint = devTheme.textSecondary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 IconButton(
                     onClick = onNewChat,
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(NeonCyanSubtle)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(devTheme.surface)
                         .testTag("new_chat_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "New Chat",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(20.dp)
+                        tint = devTheme.textPrimary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -680,75 +772,115 @@ fun TopChatHeader(
     }
 }
 
+/**
+ * Developer Empty State with programming prompt starters.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ChatEmptyState(
+fun BeautifulChatEmptyState(
     activeModel: LocalModelEntity?,
-    onNavigateToModels: () -> Unit,
+    devTheme: DevThemeColors,
+    onPromptSelected: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Minimalist sovereign core indicator
+        // Developer Terminal Glyph
         Box(
             modifier = Modifier
-                .size(64.dp)
+                .size(56.dp)
                 .clip(CircleShape)
-                .background(ObsidianCard)
-                .border(1.dp, NeonCyan.copy(alpha = 0.4f), CircleShape),
+                .background(devTheme.surface)
+                .border(0.5.dp, devTheme.primary.copy(alpha = 0.4f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Memory,
+                imageVector = Icons.Default.Terminal,
                 contentDescription = null,
-                tint = NeonCyan,
-                modifier = Modifier.size(32.dp)
+                tint = devTheme.primary,
+                modifier = Modifier.size(26.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = activeModel?.name ?: "Sovereign AI Engine",
-                color = TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-            GgufTag(text = activeModel?.quantization ?: "Q4_K_M")
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
         Text(
-            text = "معالجة محلية خاصة 100% • جاهز للمحادثة الفورية",
-            color = TextSecondary,
-            fontSize = 13.sp,
+            text = "Local Developer AI Assistant",
+            color = devTheme.textPrimary,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Zero cloud telemetry • All neural calculations on CPU",
-            color = TextMuted,
+            text = "Private on-device inference • GGUF & libllama.so native bridge",
+            color = devTheme.textMuted,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             textAlign = TextAlign.Center
         )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // Quick Developer Starter Chips
+        val suggestions = listOf(
+            "💻 Write a concurrent Kotlin Coroutine flow",
+            "🐍 Implement a FastAPI async backend service",
+            "🦀 Explain Rust ownership and lifetime borrow rules",
+            "✍️ شرح خوارزمية البحث الثنائي وكتابة الكود"
+        )
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            suggestions.forEach { prompt ->
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = devTheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPromptSelected(prompt.substring(3).trim()) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = prompt,
+                            color = devTheme.textSecondary,
+                            fontSize = 12.sp,
+                            maxLines = 1
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = devTheme.textMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
+/**
+ * Message item layout matching Developer IDE syntax styling.
+ */
 @Composable
-fun MessageItem(
+fun CleanMessageItem(
     message: ChatMessage,
+    devTheme: DevThemeColors,
     modifier: Modifier = Modifier
 ) {
     val isUser = message.role == "user"
@@ -760,18 +892,18 @@ fun MessageItem(
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         if (isUser) {
-            // User Message Bubble
+            // User Message (Developer bubble)
             Surface(
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 4.dp),
-                color = Color(0xFF0F323D),
-                border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.3f)),
+                shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp),
+                color = devTheme.userBubbleBg,
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.userBubbleBorder),
                 modifier = Modifier.padding(start = 48.dp)
             ) {
                 Text(
                     text = message.content,
-                    color = Color(0xFFECFEFF),
+                    color = devTheme.textPrimary,
                     fontSize = 14.sp,
-                    lineHeight = 21.sp,
+                    lineHeight = 22.sp,
                     style = LocalTextStyle.current.copy(
                         textDirection = TextDirection.ContentOrLtr,
                         textAlign = if (isArabic) TextAlign.End else TextAlign.Start
@@ -780,78 +912,82 @@ fun MessageItem(
                 )
             }
         } else {
-            // Assistant Message Card
-            Surface(
-                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
-                color = ObsidianCard,
-                border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder),
-                modifier = Modifier.fillMaxWidth().padding(end = 16.dp)
+            // Assistant Message
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 12.dp, top = 2.dp)
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    // Header with Model Tag & Copy
+                // Header (Model identity & Copy)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(NeonCyan)
-                            )
-                            Text(
-                                text = message.modelTag.ifEmpty { "GGUF Engine" },
-                                color = NeonCyan,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { clipboardManager.setText(AnnotatedString(message.content)) },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy message",
-                                tint = TextMuted,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Terminal,
+                            contentDescription = null,
+                            tint = devTheme.primary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = message.modelTag.ifEmpty { "llama.cpp" },
+                            color = devTheme.textSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
 
+                    IconButton(
+                        onClick = { clipboardManager.setText(AnnotatedString(message.content)) },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy message",
+                            tint = devTheme.textMuted,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Formatted Content with Thinking Process support
+                CleanFormattedAssistantContent(content = message.content, devTheme = devTheme)
+
+                // Stats footer (discreet monospace)
+                if (message.tokensPerSecond > 0f) {
                     Spacer(modifier = Modifier.height(8.dp))
-
-                    // Parse potential <think> tags for DeepSeek reasoning models
-                    FormattedAssistantContent(content = message.content)
-
-                    // Generation Stats Footer
-                    if (message.tokensPerSecond > 0f) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            MetricChip(
-                                icon = { Icon(Icons.Default.Speed, contentDescription = null, tint = EmeraldGlow, modifier = Modifier.size(12.dp)) },
-                                label = "${message.tokensPerSecond} tok/s"
-                            )
-                            if (message.timeToFirstTokenMs > 0) {
-                                MetricChip(
-                                    icon = { Icon(Icons.Default.Bolt, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(12.dp)) },
-                                    label = "TTFT: ${message.timeToFirstTokenMs}ms"
-                                )
-                            }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${message.tokensPerSecond} tok/s",
+                            color = devTheme.secondary,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        if (message.timeToFirstTokenMs > 0) {
                             Text(
-                                text = "${message.tokensCount} tokens",
-                                color = TextMuted,
+                                text = "TTFT: ${message.timeToFirstTokenMs}ms",
+                                color = devTheme.textMuted,
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace
                             )
                         }
+                        Text(
+                            text = "${message.tokensCount} tokens",
+                            color = devTheme.textMuted,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
             }
@@ -859,8 +995,11 @@ fun MessageItem(
     }
 }
 
+/**
+ * Assistant content renderer with collapsible thinking process.
+ */
 @Composable
-fun FormattedAssistantContent(content: String) {
+fun CleanFormattedAssistantContent(content: String, devTheme: DevThemeColors) {
     var isThinkingExpanded by remember { mutableStateOf(false) }
 
     if (content.contains("<think>") && content.contains("</think>")) {
@@ -869,21 +1008,12 @@ fun FormattedAssistantContent(content: String) {
         val thinkContent = content.substring(thinkStart, thinkEnd).trim()
         val restContent = content.substring(thinkEnd + 8).trim()
 
-        val isDeepReasoning = thinkContent.contains("Deep Reasoning") || thinkContent.contains("التفكير العميق")
-        val isAmpr = thinkContent.contains("AMPR") || thinkContent.contains("AMPR التكيفي")
         val isArabicThink = LocalInferenceEngine.isArabicText(thinkContent)
-
-        val title = when {
-            isDeepReasoning -> if (isArabicThink) "مسار التفكير العميق (Chain-of-Thought)" else "Deep Reasoning Chain-of-Thought"
-            isAmpr -> if (isArabicThink) "مسارات AMPR التكيفية (Adaptive Paths)" else "AMPR Multi-Path Trajectory"
-            else -> if (isArabicThink) "خطوات التحليل والتفكير" else "Reasoning Process"
-        }
-        val themeColor = if (isAmpr) NeonCyan else VioletNeural
 
         Surface(
             shape = RoundedCornerShape(8.dp),
-            color = ObsidianSurface,
-            border = androidx.compose.foundation.BorderStroke(1.dp, themeColor.copy(alpha = 0.3f)),
+            color = devTheme.surface,
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
@@ -896,24 +1026,27 @@ fun FormattedAssistantContent(content: String) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Icon(
-                            imageVector = if (isDeepReasoning) Icons.Default.AutoAwesome else Icons.Default.Psychology,
+                            imageVector = Icons.Default.Psychology,
                             contentDescription = null,
-                            tint = themeColor,
-                            modifier = Modifier.size(16.dp)
+                            tint = devTheme.tertiary,
+                            modifier = Modifier.size(15.dp)
                         )
                         Text(
-                            text = title,
-                            color = themeColor,
+                            text = if (isArabicThink) "مسار التفكير والتحليل (Chain-of-Thought)" else "Reasoning Trace",
+                            color = devTheme.tertiary,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.Medium
                         )
                     }
                     Icon(
                         imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = null,
-                        tint = themeColor,
+                        tint = devTheme.textMuted,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -922,7 +1055,7 @@ fun FormattedAssistantContent(content: String) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = thinkContent,
-                        color = TextSecondary,
+                        color = devTheme.textSecondary,
                         fontSize = 12.sp,
                         fontFamily = if (isArabicThink) FontFamily.Default else FontFamily.Monospace,
                         lineHeight = 18.sp,
@@ -936,37 +1069,38 @@ fun FormattedAssistantContent(content: String) {
         }
 
         Spacer(modifier = Modifier.height(6.dp))
-        RenderMarkdownContent(restContent)
+        CleanRenderMarkdownContent(restContent, devTheme)
     } else {
-        RenderMarkdownContent(content)
+        CleanRenderMarkdownContent(content, devTheme)
     }
 }
 
+/**
+ * Clean markdown and code block renderer with developer syntax highlighting.
+ */
 @Composable
-fun RenderMarkdownContent(text: String) {
+fun CleanRenderMarkdownContent(text: String, devTheme: DevThemeColors) {
     val isArabic = LocalInferenceEngine.isArabicText(text)
-    // If contains code fences
     if (text.contains("```")) {
         val parts = text.split("```")
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            parts.forEachIndexed { index, part ->
-                if (index % 2 == 1) {
-                    // Code block
-                    val lines = part.trim().lines()
-                    val lang = if (lines.isNotEmpty() && lines.first().length <= 12 && !lines.first().contains(" ")) lines.first() else "code"
-                    val codeContent = if (lines.isNotEmpty() && lines.first() == lang) lines.drop(1).joinToString("\n") else part
-                    CodeBlockView(code = codeContent.trim(), language = lang)
-                } else if (part.isNotBlank()) {
-                    val partIsArabic = LocalInferenceEngine.isArabicText(part)
+        parts.forEachIndexed { index, part ->
+            if (index % 2 == 1) {
+                val lines = part.lines()
+                val language = lines.firstOrNull()?.trim() ?: ""
+                val code = if (lines.size > 1) lines.drop(1).joinToString("\n") else part
+                CodeBlockView(code = code.trim(), language = language)
+            } else {
+                if (part.trim().isNotEmpty()) {
                     Text(
                         text = part.trim(),
-                        color = TextPrimary,
+                        color = devTheme.textPrimary,
                         fontSize = 14.sp,
-                        lineHeight = 22.sp,
+                        lineHeight = 23.sp,
                         style = LocalTextStyle.current.copy(
                             textDirection = TextDirection.ContentOrLtr,
-                            textAlign = if (partIsArabic) TextAlign.End else TextAlign.Start
-                        )
+                            textAlign = if (isArabic) TextAlign.End else TextAlign.Start
+                        ),
+                        modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
             }
@@ -974,9 +1108,9 @@ fun RenderMarkdownContent(text: String) {
     } else {
         Text(
             text = text,
-            color = TextPrimary,
+            color = devTheme.textPrimary,
             fontSize = 14.sp,
-            lineHeight = 22.sp,
+            lineHeight = 23.sp,
             style = LocalTextStyle.current.copy(
                 textDirection = TextDirection.ContentOrLtr,
                 textAlign = if (isArabic) TextAlign.End else TextAlign.Start
@@ -985,9 +1119,13 @@ fun RenderMarkdownContent(text: String) {
     }
 }
 
+/**
+ * Clean streaming bubble with cursor pulse.
+ */
 @Composable
-fun StreamingBubble(
+fun CleanStreamingBubble(
     state: com.example.ui.viewmodel.ActiveGenerationState,
+    devTheme: DevThemeColors,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1003,168 +1141,251 @@ fun StreamingBubble(
     )
     val isArabic = LocalInferenceEngine.isArabicText(state.streamingContent)
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = ObsidianCard,
-        border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan.copy(alpha = 0.4f)),
-        modifier = modifier.fillMaxWidth()
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(end = 12.dp, top = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(NeonCyan.copy(alpha = alpha))
-                    )
-                    Text(
-                        text = if (isArabic) "جاري التوليد على المعالج (CPU)..." else "Generating on CPU...",
-                        color = NeonCyan,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Button(
-                    onClick = onStop,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7F1D1D)),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.height(28.dp)
-                ) {
-                    Icon(Icons.Default.Stop, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (isArabic) "إيقاف" else "Stop", color = Color.White, fontSize = 11.sp)
-                }
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(devTheme.primary.copy(alpha = alpha))
+                )
+                Text(
+                    text = if (isArabic) "جاري التوليد على المعالج..." else "Evaluating tokens...",
+                    color = devTheme.primary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = FontFamily.Monospace
+                )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = onStop,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                modifier = Modifier.height(24.dp)
+            ) {
+                Text(
+                    text = if (isArabic) "إيقاف" else "Stop",
+                    color = Color(0xFFEF4444),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
 
+        Spacer(modifier = Modifier.height(4.dp))
+
+        if (state.isComputingFullResponse) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = devTheme.surface,
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = devTheme.primary,
+                        trackColor = devTheme.border
+                    )
+                    Text(
+                        text = if (isArabic) "جاري إعداد الرد بالكامل في الخلفية..." else "Computing complete response in background...",
+                        color = devTheme.textSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        } else {
             Text(
-                text = state.streamingContent.ifEmpty { if (isArabic) "جاري تحليل المدخلات محلياً..." else "Evaluating prompt..." },
-                color = TextPrimary,
+                text = state.streamingContent.ifEmpty { if (isArabic) "جاري التفكير..." else "Thinking..." } + " ▋",
+                color = devTheme.textPrimary,
                 fontSize = 14.sp,
-                lineHeight = 22.sp,
+                lineHeight = 23.sp,
                 style = LocalTextStyle.current.copy(
                     textDirection = TextDirection.ContentOrLtr,
                     textAlign = if (isArabic) TextAlign.End else TextAlign.Start
                 )
             )
+        }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MetricChip(
-                    icon = { Icon(Icons.Default.Speed, contentDescription = null, tint = EmeraldGlow, modifier = Modifier.size(12.dp)) },
-                    label = "${state.tokensPerSecond} tok/s"
-                )
-                if (state.timeToFirstTokenMs > 0) {
-                    MetricChip(
-                        icon = { Icon(Icons.Default.Bolt, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(12.dp)) },
-                        label = "TTFT: ${state.timeToFirstTokenMs}ms"
-                    )
-                }
-                Text(
-                    text = "${state.tokensGenerated} tokens",
-                    color = TextMuted,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+        if (state.tokensPerSecond > 0f) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "${state.tokensPerSecond} tok/s • ${state.tokensGenerated} tokens",
+                color = devTheme.textMuted,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace
+            )
         }
     }
 }
 
+/**
+ * Modern floating capsule input bar with integrated Think button.
+ */
 @Composable
-fun ChatInputBar(
+fun CleanChatInputBar(
     text: String,
     isGenerating: Boolean,
+    isThinkActive: Boolean,
+    devTheme: DevThemeColors,
     onTextChanged: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    onToggleThink: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding(),
-        color = ObsidianSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, ObsidianBorder)
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        color = Color.Transparent
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Surface(
+            shape = RoundedCornerShape(26.dp),
+            color = devTheme.surface,
+            border = androidx.compose.foundation.BorderStroke(
+                if (isThinkActive) 1.dp else 0.5.dp,
+                if (isThinkActive) devTheme.primary.copy(alpha = 0.7f) else devTheme.border
+            ),
+            shadowElevation = if (isThinkActive) 3.dp else 1.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            OutlinedTextField(
-                value = text,
-                onValueChange = onTextChanged,
-                placeholder = {
-                    Text(
-                        text = if (isGenerating) "النموذج يولد الرد حالياً..." else "اسأل النموذج المحلي أو اكتب رسالة...",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-                },
-                textStyle = LocalTextStyle.current.copy(
-                    textDirection = TextDirection.ContentOrLtr
-                ),
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .testTag("chat_input_field"),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = NeonCyan,
-                    unfocusedBorderColor = ObsidianBorder,
-                    focusedContainerColor = ObsidianCard,
-                    unfocusedContainerColor = ObsidianCard,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    cursorColor = NeonCyan
-                ),
-                maxLines = 4,
-                enabled = !isGenerating
-            )
-
-            // Send or Stop button
-            IconButton(
-                onClick = { if (isGenerating) onStop() else onSend() },
-                enabled = isGenerating || text.isNotBlank(),
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isGenerating) Color(0xFFEF4444) else if (text.isNotBlank()) NeonCyan else ObsidianCard)
-                    .testTag("send_message_button")
+                    .fillMaxWidth()
+                    .padding(start = 6.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(
-                    imageVector = if (isGenerating) Icons.Default.Stop else Icons.Default.Send,
-                    contentDescription = if (isGenerating) "Stop" else "Send",
-                    tint = if (isGenerating) Color.White else if (text.isNotBlank()) Color(0xFF00363D) else TextMuted,
-                    modifier = Modifier.size(20.dp)
+                // "Think" Feature Toggle Button right next to the request writing box
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (isThinkActive) devTheme.primary.copy(alpha = 0.18f) else devTheme.card.copy(alpha = 0.7f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        0.5.dp,
+                        if (isThinkActive) devTheme.primary else devTheme.border
+                    ),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable(enabled = !isGenerating) { onToggleThink() }
+                        .testTag("think_toggle_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lightbulb,
+                            contentDescription = if (isThinkActive) "Deactivate Think Mode" else "Activate Think Mode",
+                            tint = if (isThinkActive) devTheme.primary else devTheme.textMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "Think",
+                            color = if (isThinkActive) devTheme.primary else devTheme.textMuted,
+                            fontSize = 12.sp,
+                            fontWeight = if (isThinkActive) FontWeight.Bold else FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        if (isThinkActive) {
+                            Box(
+                                modifier = Modifier
+                                    .size(5.dp)
+                                    .clip(CircleShape)
+                                    .background(devTheme.primary)
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = onTextChanged,
+                    placeholder = {
+                        Text(
+                            text = if (isGenerating) "Generating response..." 
+                                   else if (isThinkActive) "Message (Think active)..." 
+                                   else "Message...",
+                            color = devTheme.textMuted,
+                            fontSize = 14.sp
+                        )
+                    },
+                    textStyle = LocalTextStyle.current.copy(
+                        textDirection = TextDirection.ContentOrLtr,
+                        fontSize = 14.sp,
+                        color = devTheme.textPrimary
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("chat_input_field"),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedTextColor = devTheme.textPrimary,
+                        unfocusedTextColor = devTheme.textPrimary,
+                        cursorColor = devTheme.primary
+                    ),
+                    maxLines = 4,
+                    enabled = !isGenerating
                 )
+
+                // Dynamic Action Button (Glowing send or Red stop)
+                IconButton(
+                    onClick = { if (isGenerating) onStop() else onSend() },
+                    enabled = isGenerating || text.isNotBlank(),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isGenerating) Color(0xFFEF4444)
+                            else if (text.isNotBlank()) devTheme.primary
+                            else devTheme.border.copy(alpha = 0.5f)
+                        )
+                        .testTag("send_message_button")
+                ) {
+                    Icon(
+                        imageVector = if (isGenerating) Icons.Default.Stop else Icons.Default.ArrowUpward,
+                        contentDescription = if (isGenerating) "Stop" else "Send",
+                        tint = if (isGenerating) Color.White else if (text.isNotBlank()) devTheme.bg else devTheme.textMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
 }
 
+/**
+ * Clean parameters sheet with developer styling.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ParametersBottomSheet(
+fun CleanParametersBottomSheet(
     temperature: Float,
     topP: Float,
     cpuThreads: Int,
     systemPrompt: String,
+    devTheme: DevThemeColors,
     onDismiss: () -> Unit,
     onSave: (Float, Float, Int, String) -> Unit
 ) {
@@ -1175,21 +1396,22 @@ fun ParametersBottomSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = ObsidianCard,
-        contentColor = TextPrimary
+        containerColor = devTheme.card,
+        contentColor = devTheme.textPrimary
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp)
+                .padding(horizontal = 20.dp, vertical = 14.dp)
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "Model Runtime Tuning",
-                fontSize = 18.sp,
+                text = "Runtime Hyperparameters",
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                color = devTheme.textPrimary,
+                fontFamily = FontFamily.Monospace
             )
 
             // Temperature
@@ -1198,17 +1420,17 @@ fun ParametersBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Temperature", color = TextSecondary, fontSize = 13.sp)
-                    Text(String.format("%.2f", temp), color = NeonCyan, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Text("Temperature (Randomness)", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text(String.format("%.2f", temp), color = devTheme.primary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
                     value = temp,
                     onValueChange = { temp = it },
                     valueRange = 0.0f..1.5f,
                     colors = SliderDefaults.colors(
-                        thumbColor = NeonCyan,
-                        activeTrackColor = NeonCyan,
-                        inactiveTrackColor = ObsidianBorder
+                        thumbColor = devTheme.primary,
+                        activeTrackColor = devTheme.primary,
+                        inactiveTrackColor = devTheme.border
                     )
                 )
             }
@@ -1219,17 +1441,17 @@ fun ParametersBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Top-P (Nucleus Sampling)", color = TextSecondary, fontSize = 13.sp)
-                    Text(String.format("%.2f", p), color = NeonCyan, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Text("Top-P (Nucleus)", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text(String.format("%.2f", p), color = devTheme.primary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
                     value = p,
                     onValueChange = { p = it },
                     valueRange = 0.1f..1.0f,
                     colors = SliderDefaults.colors(
-                        thumbColor = NeonCyan,
-                        activeTrackColor = NeonCyan,
-                        inactiveTrackColor = ObsidianBorder
+                        thumbColor = devTheme.primary,
+                        activeTrackColor = devTheme.primary,
+                        inactiveTrackColor = devTheme.border
                     )
                 )
             }
@@ -1240,8 +1462,8 @@ fun ParametersBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("CPU Compute Threads", color = TextSecondary, fontSize = 13.sp)
-                    Text("$threads Cores", color = EmeraldGlow, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Text("Compute Threads", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text("$threads Cores", color = devTheme.secondary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
                     value = threads.toFloat(),
@@ -1249,16 +1471,16 @@ fun ParametersBottomSheet(
                     valueRange = 1f..8f,
                     steps = 6,
                     colors = SliderDefaults.colors(
-                        thumbColor = EmeraldGlow,
-                        activeTrackColor = EmeraldGlow,
-                        inactiveTrackColor = ObsidianBorder
+                        thumbColor = devTheme.secondary,
+                        activeTrackColor = devTheme.secondary,
+                        inactiveTrackColor = devTheme.border
                     )
                 )
             }
 
             // System Prompt
             Column {
-                Text("System Prompt", color = TextSecondary, fontSize = 13.sp)
+                Text("System Prompt", color = devTheme.textSecondary, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
                     value = prompt,
@@ -1267,63 +1489,25 @@ fun ParametersBottomSheet(
                     maxLines = 3,
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = NeonCyan,
-                        unfocusedBorderColor = ObsidianBorder,
-                        focusedContainerColor = ObsidianSurface,
-                        unfocusedContainerColor = ObsidianSurface,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
+                        focusedBorderColor = devTheme.primary,
+                        unfocusedBorderColor = devTheme.border,
+                        focusedContainerColor = devTheme.surface,
+                        unfocusedContainerColor = devTheme.surface,
+                        focusedTextColor = devTheme.textPrimary,
+                        unfocusedTextColor = devTheme.textPrimary
                     )
                 )
-            }
-
-            // Native Engine Architecture Info Card
-            val isArm64 = com.example.engine.NativeLlamaBridge.isNativeAbiSupported()
-            val archSummary = com.example.engine.NativeLlamaBridge.getDeviceArchitectureSummary()
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = ObsidianSurface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, if (isArm64) EmeraldGlow.copy(alpha = 0.4f) else ObsidianBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isArm64) Icons.Default.Bolt else Icons.Default.Settings,
-                            contentDescription = null,
-                            tint = if (isArm64) EmeraldGlow else NeonCyan,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "Native Engine Status",
-                            color = TextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Engine: llama.cpp b9878 (libllama.so)\nArchitecture: $archSummary",
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        lineHeight = 16.sp
-                    )
-                }
             }
 
             Button(
                 onClick = { onSave(temp, p, threads, prompt) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    .height(44.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = devTheme.primary),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Apply Parameters", color = Color(0xFF00363D), fontWeight = FontWeight.Bold)
+                Text("Apply Parameters", color = devTheme.bg, fontWeight = FontWeight.Bold)
             }
         }
     }

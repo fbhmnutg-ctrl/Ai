@@ -45,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -99,6 +100,8 @@ fun SettingsScreen(
     val deepReasoningEffort by settingsManager.deepReasoningEffort.collectAsStateWithLifecycle()
     val cpuThreads by settingsManager.cpuThreads.collectAsStateWithLifecycle()
     val contextLength by settingsManager.contextLength.collectAsStateWithLifecycle()
+    val isStreamingEnabled by settingsManager.isStreamingEnabled.collectAsStateWithLifecycle()
+    val currentAppTheme by settingsManager.appTheme.collectAsStateWithLifecycle()
     val activeModel by chatViewModel.activeModel.collectAsStateWithLifecycle()
 
     var showAmprSpecDialog by remember { mutableStateOf(false) }
@@ -745,7 +748,198 @@ fun SettingsScreen(
             }
         }
 
-        // Section 3: CPU & Context Engine Preferences
+        // Section 3: Text Display Streaming Preference (User Request)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, ObsidianBorder, RoundedCornerShape(12.dp))
+                .testTag("text_streaming_setting_card"),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Text Display Streaming",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = if (isStreamingEnabled)
+                                "Real-time streaming enabled (tokens display continuously as they generate)"
+                            else
+                                "Non-streaming mode (generates full response before displaying message)",
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    Switch(
+                        checked = isStreamingEnabled,
+                        onCheckedChange = { settingsManager.setStreamingEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = NeonCyan,
+                            checkedTrackColor = NeonCyanDim,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = ObsidianSurface
+                        ),
+                        modifier = Modifier.testTag("streaming_toggle_switch")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(ObsidianSurface)
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (isStreamingEnabled)
+                            "⚡ Real-time Token Streaming: Shows thought trajectories and answers incrementally, ideal for rapid conversational feedback."
+                        else
+                            "📦 Instant Complete Response: Processes the entire prompt in the background and renders the complete answer at once without mid-sentence UI updates.",
+                        color = if (isStreamingEnabled) NeonCyan else VioletNeural,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+
+        // Section 3B: Developer IDE Theme & Aesthetic
+        val devTheme = com.example.ui.theme.LocalDevTheme.current
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, devTheme.border, RoundedCornerShape(12.dp))
+                .testTag("developer_theme_setting_card"),
+            colors = CardDefaults.cardColors(containerColor = devTheme.card),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = devTheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Developer IDE Theme",
+                            color = devTheme.textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = com.example.ui.theme.getDevThemeById(currentAppTheme).name,
+                        color = devTheme.primary,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Text(
+                    text = "Engineered dark palettes with IDE syntax highlighting & terminal aesthetics",
+                    color = devTheme.textMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Theme Presets Chips Grid
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.example.ui.theme.AllDevThemes.forEach { themePreset ->
+                        val isSelected = themePreset.id.equals(currentAppTheme, ignoreCase = true)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) themePreset.surface else devTheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                if (isSelected) 1.5.dp else 0.5.dp,
+                                if (isSelected) themePreset.primary else devTheme.border
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { settingsManager.setAppTheme(themePreset.id) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(text = themePreset.icon, fontSize = 16.sp)
+                                    Column {
+                                        Text(
+                                            text = themePreset.name,
+                                            color = if (isSelected) themePreset.primary else devTheme.textPrimary,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                        // Color Swatches
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        ) {
+                                            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(themePreset.primary))
+                                            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(themePreset.secondary))
+                                            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(themePreset.tertiary))
+                                            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(themePreset.codeBg))
+                                        }
+                                    }
+                                }
+
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Active Theme",
+                                        tint = themePreset.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 4: CPU & Context Engine Preferences
         Card(
             modifier = Modifier
                 .fillMaxWidth()

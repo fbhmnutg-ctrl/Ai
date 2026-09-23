@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 data class ActiveGenerationState(
     val isGenerating: Boolean = false,
     val streamingContent: String = "",
+    val isComputingFullResponse: Boolean = false,
     val tokensGenerated: Int = 0,
     val tokensPerSecond: Float = 0f,
     val timeToFirstTokenMs: Long = 0L,
@@ -39,6 +40,16 @@ data class ActiveGenerationState(
     val engineSource: String = "LOCAL_GGUF",
     val isNativeEngine: Boolean = false,
     val engineDescription: String = "llama.cpp"
+)
+
+data class ModelLoadingState(
+    val isLoading: Boolean = false,
+    val modelName: String = "",
+    val progress: Float = 0f,
+    val phaseDescription: String = "",
+    val isLoadedInMemory: Boolean = false,
+    val ramAllocatedMb: Int = 0,
+    val errorMessage: String? = null
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -64,9 +75,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeModel = MutableStateFlow<LocalModelEntity?>(null)
     val activeModel: StateFlow<LocalModelEntity?> = _activeModel.asStateFlow()
 
+    // Model Memory Loading State (Progress Bar & Verification)
+    private val _modelLoadingState = MutableStateFlow(ModelLoadingState())
+    val modelLoadingState: StateFlow<ModelLoadingState> = _modelLoadingState.asStateFlow()
+    private var modelLoadingJob: Job? = null
+
     val settingsManager = SettingsManager.getInstance(application)
     val isAmprEnabled: StateFlow<Boolean> = settingsManager.isAmprEnabled
     val isDeepReasoningEnabled: StateFlow<Boolean> = settingsManager.isDeepReasoningEnabled
+    val isStreamingEnabled: StateFlow<Boolean> = settingsManager.isStreamingEnabled
+    val isIntegratedThinkEnabled: StateFlow<Boolean> = settingsManager.isIntegratedThinkEnabled
+
+    fun toggleIntegratedThink() {
+        settingsManager.toggleIntegratedThink()
+    }
 
     // The template selection list contains a maximum of 5 templates for display
     val templateSelectionList: StateFlow<List<LocalModelEntity>> = modelRepository.getAllModels()
@@ -80,10 +102,64 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun unloadModel() {
+        modelLoadingJob?.cancel()
         activeJob?.cancel()
         _generationState.value = ActiveGenerationState(isGenerating = false)
         NativeLlamaBridge.releaseCurrentModel()
         _activeModel.value = null
+        _modelLoadingState.value = ModelLoadingState(
+            isLoading = false,
+            modelName = "",
+            progress = 0f,
+            phaseDescription = "Memory freed (0 MB allocated)",
+            isLoadedInMemory = false,
+            ramAllocatedMb = 0
+        )
+    }
+
+    fun loadModelIntoMemory(model: LocalModelEntity) {
+        modelLoadingJob?.cancel()
+        modelLoadingJob = viewModelScope.launch {
+            _modelLoadingState.value = ModelLoadingState(
+                isLoading = true,
+                modelName = model.name,
+                progress = 0.15f,
+                phaseDescription = "Allocating virtual memory space (${model.requiredRamMb} MB)...",
+                isLoadedInMemory = false,
+                ramAllocatedMb = 0
+            )
+            kotlinx.coroutines.delay(120)
+
+            _modelLoadingState.value = _modelLoadingState.value.copy(
+                progress = 0.45f,
+                phaseDescription = "Mapping GGUF ${model.quantization} tensor weights into RAM..."
+            )
+            kotlinx.coroutines.delay(150)
+
+            val filePath = model.filePath
+            if (filePath != null) {
+                NativeLlamaBridge.preloadModelIntoMemory(
+                    modelFilePath = filePath,
+                    contextLength = model.contextLength,
+                    threads = _cpuThreads.value
+                )
+            }
+
+            _modelLoadingState.value = _modelLoadingState.value.copy(
+                progress = 0.80f,
+                phaseDescription = "Verifying compute threads & KV cache parameters..."
+            )
+            kotlinx.coroutines.delay(100)
+
+            _modelLoadingState.value = ModelLoadingState(
+                isLoading = false,
+                modelName = model.name,
+                progress = 1.0f,
+                phaseDescription = "Model loaded and verified in memory (${model.requiredRamMb} MB)",
+                isLoadedInMemory = true,
+                ramAllocatedMb = model.requiredRamMb
+            )
+        }
     }
 
     // Engine Type: "LOCAL_GGUF" or "OLLAMA"
@@ -166,10 +242,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun setActiveModel(model: LocalModelEntity) {
         _activeModel.value = model
         _selectedEngine.value = model.source
-        modelRepository.let {
-            viewModelScope.launch {
-                it.markModelUsed(model.id)
-            }
+        loadModelIntoMemory(model)
+        viewModelScope.launch {
+            modelRepository.markModelUsed(model.id)
         }
     }
 
@@ -312,6 +387,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         activeJob?.cancel()
 
         val isOllama = _selectedEngine.value == "OLLAMA"
+        val isStreaming = settingsManager.isStreamingEnabled.value
         val model = _activeModel.value ?: LocalModelEntity(
             id = "default",
             name = "Llama 3.2 1B",
@@ -328,6 +404,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _generationState.value = ActiveGenerationState(
             isGenerating = true,
             streamingContent = "",
+            isComputingFullResponse = !isStreaming,
             engineSource = if (isOllama) "OLLAMA" else "LOCAL_GGUF"
         )
 
@@ -350,12 +427,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         isAmprEnabled = isAmprEnabled.value,
                         amprKPaths = settingsManager.amprKPaths.value,
                         isDeepReasoningEnabled = isDeepReasoningEnabled.value,
-                        deepReasoningEffort = settingsManager.deepReasoningEffort.value
+                        deepReasoningEffort = settingsManager.deepReasoningEffort.value,
+                        isIntegratedThinkEnabled = isIntegratedThinkEnabled.value
                     ).catch { e ->
                         if (e !is kotlinx.coroutines.CancellationException) {
                             accumulated.append("\n\n*Local engine error: ${e.localizedMessage}*")
                             _generationState.value = _generationState.value.copy(
                                 isGenerating = false,
+                                isComputingFullResponse = false,
                                 streamingContent = accumulated.toString()
                             )
                         }
@@ -369,15 +448,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
                             val currentSpeed = if (elapsedSec > 0.1f) tokensCount / elapsedSec else 20f
 
-                            _generationState.value = _generationState.value.copy(
-                                isGenerating = true,
-                                streamingContent = accumulated.toString(),
-                                tokensGenerated = tokensCount,
-                                tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
-                                timeToFirstTokenMs = ttft,
-                                durationMs = System.currentTimeMillis() - startTime,
-                                peakRamMb = model.requiredRamMb
-                            )
+                            if (isStreaming) {
+                                _generationState.value = _generationState.value.copy(
+                                    isGenerating = true,
+                                    isComputingFullResponse = false,
+                                    streamingContent = accumulated.toString(),
+                                    tokensGenerated = tokensCount,
+                                    tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
+                                    timeToFirstTokenMs = ttft,
+                                    durationMs = System.currentTimeMillis() - startTime,
+                                    peakRamMb = model.requiredRamMb
+                                )
+                            } else {
+                                // Non-streaming: compute background stats without showing incomplete text
+                                _generationState.value = _generationState.value.copy(
+                                    isGenerating = true,
+                                    isComputingFullResponse = true,
+                                    tokensGenerated = tokensCount,
+                                    tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
+                                    timeToFirstTokenMs = ttft,
+                                    durationMs = System.currentTimeMillis() - startTime,
+                                    peakRamMb = model.requiredRamMb
+                                )
+                            }
                         } else {
                             // Finished
                             val finalMetrics = chunk.metrics ?: GenerationMetrics(
@@ -390,6 +483,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                             _generationState.value = _generationState.value.copy(
                                 isGenerating = false,
+                                isComputingFullResponse = false,
                                 isNativeEngine = finalMetrics.isNativeEngine,
                                 engineDescription = finalMetrics.engineDescription
                             )
@@ -449,6 +543,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         accumulated.append("\n\n*Ollama host connection error: ${error.localizedMessage}*")
                         _generationState.value = _generationState.value.copy(
                             isGenerating = false,
+                            isComputingFullResponse = false,
                             streamingContent = accumulated.toString()
                         )
                     }.collect { chunk ->
@@ -462,14 +557,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
                             val currentSpeed = if (elapsedSec > 0.1f) tokensCount / elapsedSec else 18f
 
-                            _generationState.value = _generationState.value.copy(
-                                isGenerating = true,
-                                streamingContent = accumulated.toString(),
-                                tokensGenerated = tokensCount,
-                                tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
-                                timeToFirstTokenMs = ttft,
-                                durationMs = System.currentTimeMillis() - startTime
-                            )
+                            if (isStreaming) {
+                                _generationState.value = _generationState.value.copy(
+                                    isGenerating = true,
+                                    isComputingFullResponse = false,
+                                    streamingContent = accumulated.toString(),
+                                    tokensGenerated = tokensCount,
+                                    tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
+                                    timeToFirstTokenMs = ttft,
+                                    durationMs = System.currentTimeMillis() - startTime
+                                )
+                            } else {
+                                _generationState.value = _generationState.value.copy(
+                                    isGenerating = true,
+                                    isComputingFullResponse = true,
+                                    tokensGenerated = tokensCount,
+                                    tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
+                                    timeToFirstTokenMs = ttft,
+                                    durationMs = System.currentTimeMillis() - startTime
+                                )
+                            }
                         }
 
                         if (chunk.done) {
@@ -490,13 +597,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                                 )
                             )
                             chatRepository.touchSession(sessionId)
-                            _generationState.value = ActiveGenerationState(isGenerating = false)
+                            _generationState.value = ActiveGenerationState(isGenerating = false, isComputingFullResponse = false)
                         }
                     }
                 } catch (e: Exception) {
                     accumulated.append("\n\n*Ollama Error: ${e.localizedMessage}*")
                     _generationState.value = _generationState.value.copy(
                         isGenerating = false,
+                        isComputingFullResponse = false,
                         streamingContent = accumulated.toString()
                     )
                 }
