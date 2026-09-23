@@ -110,6 +110,10 @@ fun SettingsScreen(
     val enableSpectralFFT by settingsManager.enableSpectralFFT.collectAsStateWithLifecycle()
     val fractionalAlpha by settingsManager.fractionalAlpha.collectAsStateWithLifecycle()
 
+    val isGpuOffloadEnabled by settingsManager.isGpuOffloadEnabled.collectAsStateWithLifecycle()
+    val gpuOffloadLayers by settingsManager.gpuOffloadLayers.collectAsStateWithLifecycle()
+    val isOomGuardEnabled by settingsManager.isOomGuardEnabled.collectAsStateWithLifecycle()
+
     var showAmprSpecDialog by remember { mutableStateOf(false) }
     var unloadMessage by remember { mutableStateOf<String?>(null) }
 
@@ -1091,6 +1095,179 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Section 3C: Hybrid GPU + CPU Offload & Low-Memory OOM Guard
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, NeonCyanDim, RoundedCornerShape(12.dp))
+                .testTag("gpu_cpu_hybrid_offload_card"),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(NeonCyanSubtle),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Hybrid GPU + CPU Offload",
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                GgufTag(
+                                    text = if (isGpuOffloadEnabled) "GPU / CPU HYBRID" else "PURE CPU",
+                                    color = if (isGpuOffloadEnabled) EmeraldGlow else TextMuted
+                                )
+                            }
+                            Text(
+                                text = "Dynamic layer offloading for large models (3B, 5B, 7B, 8B)",
+                                color = TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = isGpuOffloadEnabled,
+                        onCheckedChange = { settingsManager.setGpuOffloadEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ObsidianBg,
+                            checkedTrackColor = NeonCyan,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = ObsidianSurface
+                        ),
+                        modifier = Modifier.testTag("gpu_offload_switch")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "To accommodate large neural weights without crashing or model errancy, transformer layers are offloaded to Vulkan/OpenCL GPU compute while remaining layers execute on SIMD CPU vector units.",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
+
+                if (isGpuOffloadEnabled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = ObsidianBorder, thickness = 1.dp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "GPU Offloaded Layers:",
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = if (gpuOffloadLayers < 0) "AUTO-BALANCED" else "$gpuOffloadLayers Layers",
+                            color = NeonCyan,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(-1 to "AUTO", 16 to "16L (50%)", 28 to "28L (85%)", 32 to "FULL").forEach { (valLayers, label) ->
+                            val isSelected = gpuOffloadLayers == valLayers
+                            Button(
+                                onClick = { settingsManager.setGpuOffloadLayers(valLayers) },
+                                modifier = Modifier.weight(1f).height(34.dp),
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) NeonCyan else ObsidianSurface,
+                                    contentColor = if (isSelected) ObsidianBg else TextSecondary
+                                ),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = ObsidianBorder, thickness = 1.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Low-Memory OOM Guard Switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Low-Memory Watchdog & OOM Guard",
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Prevents process crashes by auto-scaling KV-cache context windows when system RAM is constrained",
+                            color = TextMuted,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
+
+                    Switch(
+                        checked = isOomGuardEnabled,
+                        onCheckedChange = { settingsManager.setOomGuardEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ObsidianBg,
+                            checkedTrackColor = EmeraldGlow,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = ObsidianSurface
+                        ),
+                        modifier = Modifier.testTag("oom_guard_switch")
+                    )
                 }
             }
         }

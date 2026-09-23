@@ -14,6 +14,7 @@ data class NativeInferenceResult(
     val tokensPerSecond: Float,
     val isNativeExecution: Boolean,
     val engineName: String,
+    val gpuLayersOffloaded: Int = 0,
     val errorDetails: String? = null
 )
 
@@ -38,7 +39,7 @@ object NativeLlamaBridge {
         val primary = Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
         val isArm64 = isNativeAbiSupported()
         return if (isArm64) {
-            "ARM64 (Native NEON CPU/Vulkan Ready)"
+            "ARM64 (Native NEON CPU + Vulkan/OpenCL Hybrid GPU Ready)"
         } else {
             "$primary (Emulation/Compatibility Mode)"
         }
@@ -47,7 +48,8 @@ object NativeLlamaBridge {
     suspend fun preloadModelIntoMemory(
         modelFilePath: String,
         contextLength: Int = 2048,
-        threads: Int = 4
+        threads: Int = 4,
+        gpuLayers: Int = 0
     ): Boolean = withContext(Dispatchers.IO) {
         val file = File(modelFilePath)
         if (!file.exists()) return@withContext false
@@ -56,12 +58,13 @@ object NativeLlamaBridge {
                 return@withContext true
             }
             releaseCurrentModel()
-            Log.i(TAG, "Pre-loading native GGUF model into memory: $modelFilePath")
+            Log.i(TAG, "Pre-loading native GGUF model into memory ($gpuLayers GPU layers): $modelFilePath")
             val loaded = Llama.loadModel(
                 modelPath = file.absolutePath,
                 config = LlamaConfig(
                     contextSize = contextLength.coerceIn(512, 4096),
-                    threads = threads.coerceIn(1, 8)
+                    threads = threads.coerceIn(1, 8),
+                    gpuLayers = gpuLayers.coerceAtLeast(0)
                 )
             )
             loadedModelHandle = loaded
@@ -79,6 +82,7 @@ object NativeLlamaBridge {
         systemPrompt: String,
         contextLength: Int = 2048,
         threads: Int = 4,
+        gpuLayers: Int = 0,
         maxTokens: Int = 2048
     ): NativeInferenceResult = withContext(Dispatchers.IO) {
         val file = File(modelFilePath)
@@ -88,6 +92,7 @@ object NativeLlamaBridge {
                 tokensPerSecond = 0f,
                 isNativeExecution = false,
                 engineName = "Offline CPU Fallback",
+                gpuLayersOffloaded = 0,
                 errorDetails = "Model weight file not found at: $modelFilePath"
             )
         }
@@ -98,12 +103,13 @@ object NativeLlamaBridge {
                 loadedModelHandle!!
             } else {
                 releaseCurrentModel()
-                Log.i(TAG, "Loading native GGUF model via llama.cpp from $modelFilePath...")
+                Log.i(TAG, "Loading native GGUF model via llama.cpp from $modelFilePath ($gpuLayers GPU offload layers)...")
                 val loaded = Llama.loadModel(
                     modelPath = file.absolutePath,
                     config = LlamaConfig(
                         contextSize = contextLength.coerceIn(512, 4096),
-                        threads = threads.coerceIn(1, 8)
+                        threads = threads.coerceIn(1, 8),
+                        gpuLayers = gpuLayers.coerceAtLeast(0)
                     )
                 )
                 loadedModelHandle = loaded
@@ -119,12 +125,19 @@ object NativeLlamaBridge {
                 maxTokens = maxTokens
             )
 
+            val engineLabel = if (gpuLayers > 0) {
+                "llama.cpp Hybrid (GPU $gpuLayers L + ARM64 CPU)"
+            } else {
+                "llama.cpp (ARM64 CPU NEON)"
+            }
+
             Log.i(TAG, "Native completion finished at ${completionResult.tokensPerSecond} tok/s")
             NativeInferenceResult(
                 text = completionResult.text,
                 tokensPerSecond = completionResult.tokensPerSecond,
                 isNativeExecution = true,
-                engineName = "llama.cpp (Native C++ ARM64)"
+                engineName = engineLabel,
+                gpuLayersOffloaded = gpuLayers
             )
         } catch (linkError: UnsatisfiedLinkError) {
             Log.w(TAG, "Native llama.so UnsatisfiedLinkError: ${linkError.message}")
@@ -133,6 +146,7 @@ object NativeLlamaBridge {
                 tokensPerSecond = 0f,
                 isNativeExecution = false,
                 engineName = "llama.cpp (ABI Incompatible)",
+                gpuLayersOffloaded = 0,
                 errorDetails = "Native library libllama.so requires ARM64 device (Host is ${Build.SUPPORTED_ABIS.firstOrNull()})."
             )
         } catch (t: Throwable) {
@@ -142,6 +156,7 @@ object NativeLlamaBridge {
                 tokensPerSecond = 0f,
                 isNativeExecution = false,
                 engineName = "llama.cpp (Execution Failed)",
+                gpuLayersOffloaded = 0,
                 errorDetails = t.localizedMessage ?: "Unknown native runtime error"
             )
         }

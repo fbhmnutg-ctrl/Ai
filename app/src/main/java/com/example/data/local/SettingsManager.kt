@@ -60,6 +60,16 @@ class SettingsManager private constructor(context: Context) {
     private val _fractionalAlpha = MutableStateFlow(prefs.getFloat(KEY_FRACTIONAL_ALPHA, 0.5f))
     val fractionalAlpha: StateFlow<Float> = _fractionalAlpha.asStateFlow()
 
+    // Hybrid GPU + CPU Offloading and Memory OOM Guard Settings
+    private val _isGpuOffloadEnabled = MutableStateFlow(prefs.getBoolean(KEY_GPU_OFFLOAD_ENABLED, true))
+    val isGpuOffloadEnabled: StateFlow<Boolean> = _isGpuOffloadEnabled.asStateFlow()
+
+    private val _gpuOffloadLayers = MutableStateFlow(prefs.getInt(KEY_GPU_OFFLOAD_LAYERS, -1))
+    val gpuOffloadLayers: StateFlow<Int> = _gpuOffloadLayers.asStateFlow()
+
+    private val _isOomGuardEnabled = MutableStateFlow(prefs.getBoolean(KEY_OOM_GUARD_ENABLED, true))
+    val isOomGuardEnabled: StateFlow<Boolean> = _isOomGuardEnabled.asStateFlow()
+
     init {
         syncPocketMathConfig()
     }
@@ -169,6 +179,21 @@ class SettingsManager private constructor(context: Context) {
         _contextLength.value = clamped
     }
 
+    fun setGpuOffloadEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_GPU_OFFLOAD_ENABLED, enabled).apply()
+        _isGpuOffloadEnabled.value = enabled
+    }
+
+    fun setGpuOffloadLayers(layers: Int) {
+        prefs.edit().putInt(KEY_GPU_OFFLOAD_LAYERS, layers).apply()
+        _gpuOffloadLayers.value = layers
+    }
+
+    fun setOomGuardEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_OOM_GUARD_ENABLED, enabled).apply()
+        _isOomGuardEnabled.value = enabled
+    }
+
     companion object {
         private const val KEY_AMPR_ENABLED = "key_ampr_enabled"
         private const val KEY_AMPR_K_PATHS = "key_ampr_k_paths"
@@ -185,6 +210,10 @@ class SettingsManager private constructor(context: Context) {
         private const val KEY_RIEMANNIAN_EKF = "key_riemannian_ekf"
         private const val KEY_SPECTRAL_FFT = "key_spectral_fft"
         private const val KEY_FRACTIONAL_ALPHA = "key_fractional_alpha"
+
+        private const val KEY_GPU_OFFLOAD_ENABLED = "key_gpu_offload_enabled"
+        private const val KEY_GPU_OFFLOAD_LAYERS = "key_gpu_offload_layers"
+        private const val KEY_OOM_GUARD_ENABLED = "key_oom_guard_enabled"
 
         @Volatile
         private var INSTANCE: SettingsManager? = null

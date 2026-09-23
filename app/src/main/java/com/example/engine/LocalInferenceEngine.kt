@@ -1,5 +1,6 @@
 package com.example.engine
 
+import android.content.Context
 import com.example.data.local.entity.ChatMessage
 import com.example.data.local.entity.LocalModelEntity
 import kotlinx.coroutines.currentCoroutineContext
@@ -57,7 +58,11 @@ class LocalInferenceEngine {
         amprKPaths: Int = 3,
         isDeepReasoningEnabled: Boolean = false,
         deepReasoningEffort: String = "MEDIUM",
-        isIntegratedThinkEnabled: Boolean = false
+        isIntegratedThinkEnabled: Boolean = false,
+        context: Context? = null,
+        isGpuOffloadEnabled: Boolean = true,
+        gpuOffloadLayers: Int = -1,
+        isOomGuardEnabled: Boolean = true
     ): Flow<GenerationChunk> = flow {
         val userPrompt = messages.lastOrNull { it.role == "user" }?.content ?: ""
         val isArabic = isArabicText(userPrompt) || isArabicText(systemPrompt)
@@ -75,7 +80,7 @@ class LocalInferenceEngine {
                     "عند الإجابة، قم بتحليل المسألة بدقة وتفكيكها منطقياً، والتحقق من الفرضيات، وإظهار خطوات التفكير التفصيلية داخل وسم <think>.\n\n" +
                     systemPrompt
                 } else {
-                    "You are an advanced Deep Reasoning AI assistant running locally on-device.\n\n" +
+                    "You are an advanced Deep Reasoning AI assistant running locally on-device.\n" +
                     "When responding, you must carefully analyze the query, break down the logic step-by-step, " +
                     "verify assumptions, self-correct any potential fallacies, and provide a deep structured answer with transparent <think> reasoning.\n\n" +
                     systemPrompt
@@ -110,12 +115,40 @@ class LocalInferenceEngine {
         // Check for genuine native execution if GGUF file is present on disk
         val modelFile = model.filePath?.let { File(it) }
         if (modelFile != null && modelFile.exists() && modelFile.length() > 1024) {
+            val modelSizeMb = (modelFile.length() / (1024 * 1024)).toInt().coerceAtLeast(model.requiredRamMb)
+            
+            // Calculate Hybrid GPU + CPU Offload Plan & Memory Guard
+            val offloadPlan = if (context != null && isOomGuardEnabled) {
+                HybridGpuCpuManager.calculateOffloadPlan(
+                    context = context,
+                    modelSizeMb = modelSizeMb,
+                    totalModelLayers = 32,
+                    userGpuLayersPreference = if (isGpuOffloadEnabled) gpuOffloadLayers else 0,
+                    requestedContextLength = model.contextLength,
+                    requestedThreads = numThreads,
+                    isGpuOffloadEnabled = isGpuOffloadEnabled
+                )
+            } else {
+                val layers = if (isGpuOffloadEnabled) (if (gpuOffloadLayers >= 0) gpuOffloadLayers else 28) else 0
+                HybridOffloadPlan(
+                    isGpuAccelerated = layers > 0,
+                    totalModelLayers = 32,
+                    gpuOffloadLayers = layers,
+                    cpuThreads = numThreads,
+                    safeContextLength = model.contextLength.coerceIn(512, 2048),
+                    isOomRiskHigh = false,
+                    estimatedRamMbNeeded = model.requiredRamMb,
+                    memoryStatusSummary = if (layers > 0) "Hybrid GPU ($layers L) + CPU" else "CPU Vectorized"
+                )
+            }
+
             val nativeResult = NativeLlamaBridge.executeInference(
                 modelFilePath = modelFile.absolutePath,
                 prompt = userPrompt,
                 systemPrompt = effectiveSystemPrompt,
-                contextLength = model.contextLength.coerceIn(512, 2048),
-                threads = numThreads.coerceIn(1, 4),
+                contextLength = offloadPlan.safeContextLength,
+                threads = offloadPlan.cpuThreads,
+                gpuLayers = offloadPlan.gpuOffloadLayers,
                 maxTokens = 512
             )
 

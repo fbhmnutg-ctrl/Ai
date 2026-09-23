@@ -428,7 +428,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         amprKPaths = settingsManager.amprKPaths.value,
                         isDeepReasoningEnabled = isDeepReasoningEnabled.value,
                         deepReasoningEffort = settingsManager.deepReasoningEffort.value,
-                        isIntegratedThinkEnabled = isIntegratedThinkEnabled.value
+                        isIntegratedThinkEnabled = isIntegratedThinkEnabled.value,
+                        isGpuOffloadEnabled = settingsManager.isGpuOffloadEnabled.value,
+                        gpuOffloadLayers = settingsManager.gpuOffloadLayers.value,
+                        isOomGuardEnabled = settingsManager.isOomGuardEnabled.value
                     ).catch { e ->
                         if (e !is kotlinx.coroutines.CancellationException) {
                             accumulated.append("\n\n*Local engine error: ${e.localizedMessage}*")
