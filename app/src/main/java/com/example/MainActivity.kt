@@ -45,8 +45,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.outlined.Language
 import com.example.ui.screens.BenchmarkScreen
 import com.example.ui.screens.ChatScreen
+import com.example.ui.screens.HuggingFaceScreen
 import com.example.ui.screens.ModelHubScreen
 import com.example.ui.screens.OllamaHostScreen
 import com.example.ui.screens.SettingsScreen
@@ -62,6 +65,7 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.BenchmarkViewModel
 import com.example.ui.viewmodel.ChatViewModel
+import com.example.ui.viewmodel.HuggingFaceViewModel
 import com.example.ui.viewmodel.ModelHubViewModel
 import com.example.ui.viewmodel.OllamaHostViewModel
 
@@ -73,6 +77,7 @@ enum class AppDestination(
 ) {
     CHAT("Chat", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "tab_chat"),
     MODELS("GGUF Hub", Icons.Filled.Memory, Icons.Outlined.Memory, "tab_models"),
+    HUGGINGFACE("HuggingFace", Icons.Filled.Language, Icons.Outlined.Language, "tab_hf"),
     UPLOADED("Templates", Icons.Filled.CloudUpload, Icons.Outlined.CloudUpload, "tab_uploaded"),
     SETTINGS("Settings", Icons.Filled.Settings, Icons.Outlined.Settings, "tab_settings"),
     OLLAMA("Ollama", Icons.Filled.Dns, Icons.Outlined.Dns, "tab_ollama"),
@@ -83,6 +88,7 @@ class MainActivity : ComponentActivity() {
 
     private val chatViewModel: ChatViewModel by viewModels()
     private val modelHubViewModel: ModelHubViewModel by viewModels()
+    private val huggingFaceViewModel: HuggingFaceViewModel by viewModels()
     private val ollamaHostViewModel: OllamaHostViewModel by viewModels()
     private val benchmarkViewModel: BenchmarkViewModel by viewModels()
 
@@ -115,9 +121,9 @@ class MainActivity : ComponentActivity() {
                             val navItems = listOf(
                                 AppDestination.CHAT,
                                 AppDestination.MODELS,
+                                AppDestination.HUGGINGFACE,
                                 AppDestination.UPLOADED,
-                                AppDestination.SETTINGS,
-                                AppDestination.OLLAMA
+                                AppDestination.SETTINGS
                             )
                             navItems.forEach { destination ->
                                 val isSelected = currentTab == destination || (destination == AppDestination.SETTINGS && currentTab == AppDestination.BENCHMARK)
@@ -172,6 +178,12 @@ class MainActivity : ComponentActivity() {
                                         chatViewModel.setActiveModel(model)
                                         currentTab = AppDestination.CHAT
                                     }
+                                )
+                            }
+                            AppDestination.HUGGINGFACE -> {
+                                HuggingFaceScreen(
+                                    viewModel = huggingFaceViewModel,
+                                    onNavigateToModelHub = { currentTab = AppDestination.MODELS }
                                 )
                             }
                             AppDestination.UPLOADED -> {

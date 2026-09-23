@@ -209,5 +209,104 @@ class ExampleRobolectricTest {
     tempFile.delete()
     customFile.delete()
   }
+
+  @Test
+  fun `huggingface api service strictly allows sub 4B models and excludes large models`() {
+    val api = com.example.data.remote.HuggingFaceApiService()
+
+    val gemma2b = com.example.data.remote.HuggingFaceModel(
+      id = "google/gemma-2-2b-it",
+      author = "google",
+      modelName = "gemma-2-2b-it",
+      parameterCount = "2.6B",
+      architectureClass = "gemma",
+      downloads = 10000,
+      likes = 500,
+      pipelineTag = "text-generation",
+      tags = listOf("gemma2", "text-generation"),
+      hasGguf = true
+    )
+    assertTrue(api.isModelStrictlySub4B(gemma2b))
+
+    val qwen15b = com.example.data.remote.HuggingFaceModel(
+      id = "Qwen/Qwen2.5-1.5B-Instruct",
+      author = "Qwen",
+      modelName = "Qwen2.5-1.5B-Instruct",
+      parameterCount = "1.5B",
+      architectureClass = "qwen",
+      downloads = 50000,
+      likes = 1200,
+      pipelineTag = "text-generation",
+      tags = listOf("qwen2", "text-generation"),
+      hasGguf = true
+    )
+    assertTrue(api.isModelStrictlySub4B(qwen15b))
+
+    val phi35Mini = com.example.data.remote.HuggingFaceModel(
+      id = "microsoft/Phi-3.5-mini-instruct",
+      author = "microsoft",
+      modelName = "Phi-3.5-mini-instruct",
+      parameterCount = "3.8B",
+      architectureClass = "phi",
+      downloads = 80000,
+      likes = 2000,
+      pipelineTag = "text-generation",
+      tags = listOf("phi3"),
+      hasGguf = true
+    )
+    assertTrue(api.isModelStrictlySub4B(phi35Mini))
+
+    val smol135m = com.example.data.remote.HuggingFaceModel(
+      id = "HuggingFaceTB/SmolLM2-135M",
+      author = "HuggingFaceTB",
+      modelName = "SmolLM2-135M",
+      parameterCount = "135M",
+      architectureClass = "smollm",
+      downloads = 12000,
+      likes = 300,
+      pipelineTag = "text-generation",
+      tags = listOf("smollm"),
+      hasGguf = true
+    )
+    assertTrue(api.isModelStrictlySub4B(smol135m))
+
+    // Disallowed: 7B, 8B, 70B models
+    val llama7b = com.example.data.remote.HuggingFaceModel(
+      id = "meta-llama/Llama-2-7b-chat-hf",
+      author = "meta-llama",
+      modelName = "Llama-2-7b-chat-hf",
+      parameterCount = "7B",
+      architectureClass = "llama",
+      downloads = 200000,
+      likes = 4000,
+      pipelineTag = "text-generation",
+      tags = listOf("llama", "7b"),
+      hasGguf = true
+    )
+    org.junit.Assert.assertFalse(api.isModelStrictlySub4B(llama7b))
+
+    val llama70b = com.example.data.remote.HuggingFaceModel(
+      id = "meta-llama/Meta-Llama-3-70B-Instruct",
+      author = "meta-llama",
+      modelName = "Meta-Llama-3-70B-Instruct",
+      parameterCount = "70B",
+      architectureClass = "llama",
+      downloads = 1000000,
+      likes = 12000,
+      pipelineTag = "text-generation",
+      tags = listOf("llama", "70b"),
+      hasGguf = true
+    )
+    org.junit.Assert.assertFalse(api.isModelStrictlySub4B(llama70b))
+  }
+
+  @Test
+  fun `background inference manager initializes cleanly`() {
+    val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+    com.example.engine.BackgroundInferenceManager.initialize(context)
+    val state = com.example.engine.BackgroundInferenceManager.generationState.value
+    org.junit.Assert.assertFalse(state.isGenerating)
+    assertEquals("", state.streamingContent)
+  }
 }
 
