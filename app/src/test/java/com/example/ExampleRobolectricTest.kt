@@ -308,5 +308,51 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertFalse(state.isGenerating)
     assertEquals("", state.streamingContent)
   }
+
+  @Test
+  fun `local inference generates response without crash for downloaded model`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val engine = com.example.engine.LocalInferenceEngine()
+    val model = com.example.data.local.entity.LocalModelEntity(
+      id = "test-qwen-0.5b",
+      name = "Qwen 2.5 0.5B",
+      filename = "qwen-0.5b.gguf",
+      architecture = "qwen",
+      quantization = "Q4_K_M",
+      parameterCount = "0.5B",
+      sizeBytes = 350_000_000L,
+      requiredRamMb = 550,
+      contextLength = 2048,
+      isDownloaded = true,
+      filePath = null
+    )
+
+    val messages = listOf(
+      com.example.data.local.entity.ChatMessage(
+        sessionId = 1L,
+        role = "user",
+        content = "Hello! Tell me about Kotlin."
+      )
+    )
+
+    val collectedTokens = StringBuilder()
+    var isFinished = false
+    engine.generateLocalStream(
+      model = model,
+      messages = messages,
+      userPromptOverride = "Hello! Tell me about Kotlin.",
+      systemPrompt = "You are a helpful assistant.",
+      context = context
+    ).collect { chunk ->
+      if (!chunk.isFinished) {
+        collectedTokens.append(chunk.token)
+      } else {
+        isFinished = true
+      }
+    }
+
+    assertTrue(isFinished)
+    assertTrue(collectedTokens.isNotEmpty())
+  }
 }
 

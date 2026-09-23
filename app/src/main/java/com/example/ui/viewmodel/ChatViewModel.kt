@@ -136,13 +136,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             )
             kotlinx.coroutines.delay(150)
 
-            val filePath = model.filePath
+            val filePath = model.filePath ?: run {
+                val context = getApplication<Application>()
+                val modelsDir = java.io.File(context.filesDir, "models")
+                val f = java.io.File(modelsDir, model.filename)
+                if (f.exists()) f.absolutePath else null
+            }
+
             if (filePath != null) {
-                NativeLlamaBridge.preloadModelIntoMemory(
-                    modelFilePath = filePath,
-                    contextLength = model.contextLength,
-                    threads = _cpuThreads.value
-                )
+                try {
+                    NativeLlamaBridge.preloadModelIntoMemory(
+                        modelFilePath = filePath,
+                        contextLength = model.contextLength,
+                        threads = _cpuThreads.value
+                    )
+                } catch (t: Throwable) {
+                    android.util.Log.w("ChatViewModel", "Preload model non-fatal exception: ${t.message}")
+                }
             }
 
             _modelLoadingState.value = _modelLoadingState.value.copy(

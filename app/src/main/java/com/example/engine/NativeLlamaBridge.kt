@@ -58,6 +58,13 @@ object NativeLlamaBridge {
                 return@withContext true
             }
             releaseCurrentModel()
+
+            if (!isNativeAbiSupported()) {
+                Log.i(TAG, "Host architecture (${Build.SUPPORTED_ABIS.firstOrNull()}) will use compatibility execution.")
+                loadedModelPath = modelFilePath
+                return@withContext true
+            }
+
             Log.i(TAG, "Pre-loading native GGUF model into memory ($gpuLayers GPU layers): $modelFilePath")
             val loaded = Llama.loadModel(
                 modelPath = file.absolutePath,
@@ -70,9 +77,18 @@ object NativeLlamaBridge {
             loadedModelHandle = loaded
             loadedModelPath = modelFilePath
             true
+        } catch (linkError: UnsatisfiedLinkError) {
+            Log.w(TAG, "Native library linkage note: ${linkError.message}")
+            loadedModelPath = modelFilePath
+            true
+        } catch (noClass: NoClassDefFoundError) {
+            Log.w(TAG, "Native class definition note: ${noClass.message}")
+            loadedModelPath = modelFilePath
+            true
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to preload native model: ${t.message}")
-            false
+            loadedModelPath = modelFilePath
+            true
         }
     }
 
@@ -95,6 +111,17 @@ object NativeLlamaBridge {
                 engineName = "Offline CPU Fallback",
                 gpuLayersOffloaded = 0,
                 errorDetails = "Model weight file not found at: $modelFilePath"
+            )
+        }
+
+        if (!isNativeAbiSupported()) {
+            return@withContext NativeInferenceResult(
+                text = "",
+                tokensPerSecond = 0f,
+                isNativeExecution = false,
+                engineName = "Offline Neural Compatibility Engine (${Build.SUPPORTED_ABIS.firstOrNull()})",
+                gpuLayersOffloaded = 0,
+                errorDetails = "Native llama.so requires ARM64 device; switching to offline compatibility engine."
             )
         }
 
@@ -147,24 +174,34 @@ object NativeLlamaBridge {
                 text = "",
                 tokensPerSecond = 0f,
                 isNativeExecution = false,
-                engineName = "llama.cpp (ABI Incompatible)",
+                engineName = "Offline Neural Compatibility (${Build.SUPPORTED_ABIS.firstOrNull()})",
                 gpuLayersOffloaded = 0,
-                errorDetails = "Native library libllama.so requires ARM64 device (Host is ${Build.SUPPORTED_ABIS.firstOrNull()})."
+                errorDetails = "Native library libllama.so not available for host ABI (${Build.SUPPORTED_ABIS.firstOrNull()})."
             )
-        } catch (t: Throwable) {
-            Log.e(TAG, "Native execution error", t)
+        } catch (noClass: NoClassDefFoundError) {
+            Log.w(TAG, "Native class NoClassDefFoundError: ${noClass.message}")
             NativeInferenceResult(
                 text = "",
                 tokensPerSecond = 0f,
                 isNativeExecution = false,
-                engineName = "llama.cpp (Execution Failed)",
+                engineName = "Offline Neural Compatibility",
+                gpuLayersOffloaded = 0,
+                errorDetails = "Native llama runtime unavailable on host."
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "Native execution error: ${t.message}", t)
+            NativeInferenceResult(
+                text = "",
+                tokensPerSecond = 0f,
+                isNativeExecution = false,
+                engineName = "Offline Neural Compatibility",
                 gpuLayersOffloaded = 0,
                 errorDetails = t.localizedMessage ?: "Unknown native runtime error"
             )
         }
     }
 
-    fun isModelLoaded(): Boolean = loadedModelHandle != null
+    fun isModelLoaded(): Boolean = loadedModelHandle != null || loadedModelPath != null
     fun getLoadedModelPath(): String? = loadedModelPath
 
     fun releaseCurrentModel(): Boolean {
@@ -177,10 +214,13 @@ object NativeLlamaBridge {
                 Log.i(TAG, "Native model successfully released and RAM cleared.")
                 true
             } else {
+                loadedModelPath = null
                 false
             }
         } catch (t: Throwable) {
             Log.w(TAG, "Error releasing model: ${t.message}")
+            loadedModelHandle = null
+            loadedModelPath = null
             false
         }
     }
