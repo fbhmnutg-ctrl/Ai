@@ -209,8 +209,16 @@ class RealModelDownloader(private val context: Context) {
                     tempFile.delete()
                 }
 
+                // Automatically save model inside its dedicated named folder inside the system Downloads directory
+                val finalModelFile = com.example.engine.ModelStorageManager.organizeDownloadedModel(
+                    context = context,
+                    modelName = model.name,
+                    fileName = model.filename,
+                    downloadedTempFile = targetFile
+                )
+
                 onProgress(1.0f, totalMb, totalMb, 0f)
-                return@withContext Result.success(targetFile)
+                return@withContext Result.success(finalModelFile)
 
             } catch (e: Exception) {
                 activeCalls.remove(model.id)

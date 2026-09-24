@@ -41,6 +41,74 @@ class SettingsManager private constructor(context: Context) {
     private val _isOomGuardEnabled = MutableStateFlow(prefs.getBoolean(KEY_OOM_GUARD_ENABLED, true))
     val isOomGuardEnabled: StateFlow<Boolean> = _isOomGuardEnabled.asStateFlow()
 
+    // Demonstrating the thinking process (optional)
+    private val _showThinkingProcess = MutableStateFlow(prefs.getBoolean(KEY_SHOW_THINKING_PROCESS, true))
+    val showThinkingProcess: StateFlow<Boolean> = _showThinkingProcess.asStateFlow()
+
+    // Granular Model Hyperparameter Controls
+    private val _temperature = MutableStateFlow(prefs.getFloat(KEY_TEMPERATURE, 0.7f))
+    val temperature: StateFlow<Float> = _temperature.asStateFlow()
+
+    private val _topP = MutableStateFlow(prefs.getFloat(KEY_TOP_P, 0.9f))
+    val topP: StateFlow<Float> = _topP.asStateFlow()
+
+    private val _topK = MutableStateFlow(prefs.getInt(KEY_TOP_K, 40))
+    val topK: StateFlow<Int> = _topK.asStateFlow()
+
+    private val _maxTokens = MutableStateFlow(prefs.getInt(KEY_MAX_TOKENS, 2048))
+    val maxTokens: StateFlow<Int> = _maxTokens.asStateFlow()
+
+    private val _repeatPenalty = MutableStateFlow(prefs.getFloat(KEY_REPEAT_PENALTY, 1.1f))
+    val repeatPenalty: StateFlow<Float> = _repeatPenalty.asStateFlow()
+
+    private val _autoSaveDownloads = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SAVE_DOWNLOADS, true))
+    val autoSaveDownloads: StateFlow<Boolean> = _autoSaveDownloads.asStateFlow()
+
+    fun setShowThinkingProcess(show: Boolean) {
+        prefs.edit().putBoolean(KEY_SHOW_THINKING_PROCESS, show).apply()
+        _showThinkingProcess.value = show
+    }
+
+    fun toggleThinkingProcess() {
+        val next = !_showThinkingProcess.value
+        setShowThinkingProcess(next)
+    }
+
+    fun setTemperature(temp: Float) {
+        val clamped = temp.coerceIn(0.0f, 2.0f)
+        prefs.edit().putFloat(KEY_TEMPERATURE, clamped).apply()
+        _temperature.value = clamped
+    }
+
+    fun setTopP(p: Float) {
+        val clamped = p.coerceIn(0.05f, 1.0f)
+        prefs.edit().putFloat(KEY_TOP_P, clamped).apply()
+        _topP.value = clamped
+    }
+
+    fun setTopK(k: Int) {
+        val clamped = k.coerceIn(1, 100)
+        prefs.edit().putInt(KEY_TOP_K, clamped).apply()
+        _topK.value = clamped
+    }
+
+    fun setMaxTokens(tokens: Int) {
+        val clamped = tokens.coerceIn(64, 8192)
+        prefs.edit().putInt(KEY_MAX_TOKENS, clamped).apply()
+        _maxTokens.value = clamped
+    }
+
+    fun setRepeatPenalty(penalty: Float) {
+        val clamped = penalty.coerceIn(1.0f, 2.0f)
+        prefs.edit().putFloat(KEY_REPEAT_PENALTY, clamped).apply()
+        _repeatPenalty.value = clamped
+    }
+
+    fun setAutoSaveDownloads(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_SAVE_DOWNLOADS, enabled).apply()
+        _autoSaveDownloads.value = enabled
+    }
+
     fun setAppTheme(theme: String) {
         prefs.edit().putString(KEY_APP_THEME, theme).apply()
         _appTheme.value = theme
@@ -98,6 +166,14 @@ class SettingsManager private constructor(context: Context) {
         private const val KEY_GPU_OFFLOAD_ENABLED = "key_gpu_offload_enabled"
         private const val KEY_GPU_OFFLOAD_LAYERS = "key_gpu_offload_layers"
         private const val KEY_OOM_GUARD_ENABLED = "key_oom_guard_enabled"
+
+        private const val KEY_SHOW_THINKING_PROCESS = "key_show_thinking_process"
+        private const val KEY_TEMPERATURE = "key_temperature"
+        private const val KEY_TOP_P = "key_top_p"
+        private const val KEY_TOP_K = "key_top_k"
+        private const val KEY_MAX_TOKENS = "key_max_tokens"
+        private const val KEY_REPEAT_PENALTY = "key_repeat_penalty"
+        private const val KEY_AUTO_SAVE_DOWNLOADS = "key_auto_save_downloads"
 
         @Volatile
         private var INSTANCE: SettingsManager? = null

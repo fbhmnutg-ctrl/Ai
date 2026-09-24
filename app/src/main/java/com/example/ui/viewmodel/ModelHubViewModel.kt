@@ -80,23 +80,21 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
             val displayName = GgufParser.getDisplayNameFromUri(context, uri)
-            val modelsDir = File(context.filesDir, "models").apply { mkdirs() }
-            val targetFile = File(modelsDir, "uploaded_${System.currentTimeMillis()}_$displayName")
+            val tempMetadata = GgufParser.parseFromUri(context, uri)
+            val modelName = tempMetadata.modelName.ifEmpty { displayName.substringBeforeLast('.') }
 
-            try {
-                context.contentResolver.openInputStream(uri)?.use { inStream ->
-                    FileOutputStream(targetFile).use { outStream ->
-                        inStream.copyTo(outStream)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w("ModelHubViewModel", "Direct stream copy error: ${e.message}")
-            }
+            // Automatically organize into dedicated folder inside Downloads: Downloads/<model_name>/<model_file>
+            val (internalFile, publicDownloadFile) = com.example.engine.ModelStorageManager.saveImportedModel(
+                context = context,
+                modelName = modelName,
+                fileName = displayName,
+                uri = uri
+            )
 
-            val metadata = if (targetFile.exists() && targetFile.length() > 0) {
-                GgufParser.parseFromFile(targetFile, displayName)
+            val metadata = if (internalFile.exists() && internalFile.length() > 0) {
+                GgufParser.parseFromFile(internalFile, displayName)
             } else {
-                GgufParser.parseFromUri(context, uri)
+                tempMetadata
             }
 
             _importedGgufMetadata.value = metadata
@@ -104,7 +102,7 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
             val modelId = "imported-" + (metadata.modelName.lowercase().replace(" ", "-").ifEmpty { "template" }) + "-" + (System.currentTimeMillis() % 10000)
             val entity = LocalModelEntity(
                 id = modelId,
-                name = metadata.modelName.ifEmpty { displayName.substringBeforeLast('.') },
+                name = metadata.modelName.ifEmpty { modelName },
                 filename = displayName,
                 architecture = metadata.architecture,
                 quantization = metadata.quantization,
@@ -115,20 +113,21 @@ class ModelHubViewModel(application: Application) : AndroidViewModel(application
                     metadata.fileSizeBytes > 250_000_000L -> "0.5B"
                     else -> "135M"
                 },
-                sizeBytes = if (targetFile.exists() && targetFile.length() > 0) targetFile.length() else metadata.fileSizeBytes,
+                sizeBytes = if (internalFile.exists() && internalFile.length() > 0) internalFile.length() else metadata.fileSizeBytes,
                 requiredRamMb = metadata.estimatedRamRequiredMb,
                 contextLength = metadata.contextLength,
                 isDownloaded = true,
                 downloadProgress = 1.0f,
-                filePath = if (targetFile.exists()) targetFile.absolutePath else null,
+                filePath = if (internalFile.exists()) internalFile.absolutePath else null,
                 source = "UPLOADED",
-                description = "Uploaded on-device template (${metadata.architecture.uppercase()}, ${metadata.quantization}) with ${metadata.layerCount} layers. Ready for offline inference.",
+                description = "Uploaded on-device template (${metadata.architecture.uppercase()}, ${metadata.quantization}) with ${metadata.layerCount} layers. Saved in Download/${com.example.engine.ModelStorageManager.sanitizeFolderName(modelName)}/.",
                 isFavorite = true,
                 lastUsedTimestamp = System.currentTimeMillis()
             )
 
             modelRepository.insertModel(entity)
-            _importStatusMessage.value = "Imported '${entity.name}' (Architecture: ${entity.architecture.uppercase()}, Quant: ${entity.quantization}) successfully!"
+            val downloadFolderNotice = if (publicDownloadFile != null) " (Saved in Downloads/${com.example.engine.ModelStorageManager.sanitizeFolderName(modelName)}/)" else ""
+            _importStatusMessage.value = "Imported '${entity.name}' successfully!$downloadFolderNotice"
         }
     }
 

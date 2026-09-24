@@ -55,7 +55,11 @@ object BackgroundInferenceManager {
         gpuOffloadLayers: Int,
         isOomGuardEnabled: Boolean,
         isOllama: Boolean = false,
-        ollamaClient: com.example.data.ollama.OllamaClient? = null
+        ollamaClient: com.example.data.ollama.OllamaClient? = null,
+        maxTokens: Int = 2048,
+        topK: Int = 40,
+        repeatPenalty: Float = 1.1f,
+        showThinkingProcess: Boolean = true
     ) {
         stopCurrentGeneration()
 
@@ -68,15 +72,19 @@ object BackgroundInferenceManager {
             chatRepository = ChatRepository(db.chatDao())
         }
 
+        val generationStartTime = System.currentTimeMillis()
+
         _generationState.value = ActiveGenerationState(
             isGenerating = true,
             streamingContent = "",
             isComputingFullResponse = !isStreaming,
+            startTimestamp = generationStartTime,
+            durationMs = 0L,
             engineSource = if (isOllama) "OLLAMA" else "LOCAL_GGUF"
         )
 
         activeJob = applicationScope.launch {
-            val startTime = System.currentTimeMillis()
+            val startTime = generationStartTime
             val accumulated = StringBuilder()
             var tokensCount = 0
             var ttft = 0L
@@ -97,7 +105,11 @@ object BackgroundInferenceManager {
                         context = appContext,
                         isGpuOffloadEnabled = isGpuOffloadEnabled,
                         gpuOffloadLayers = gpuOffloadLayers,
-                        isOomGuardEnabled = isOomGuardEnabled
+                        isOomGuardEnabled = isOomGuardEnabled,
+                        maxTokens = maxTokens,
+                        topK = topK,
+                        repeatPenalty = repeatPenalty,
+                        showThinkingProcess = showThinkingProcess
                     ).catch { e ->
                         if (e !is kotlinx.coroutines.CancellationException) {
                             Log.e(TAG, "Local inference error in background: ${e.message}", e)
@@ -127,6 +139,8 @@ object BackgroundInferenceManager {
                                     tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
                                     timeToFirstTokenMs = ttft,
                                     durationMs = System.currentTimeMillis() - startTime,
+                                    startTimestamp = startTime,
+                                    latestToken = chunk.token,
                                     peakRamMb = model.requiredRamMb,
                                     engineSource = "LOCAL_GGUF"
                                 )
@@ -145,6 +159,8 @@ object BackgroundInferenceManager {
                                 tokensPerSecond = (speed * 10).toInt() / 10f,
                                 timeToFirstTokenMs = ttft,
                                 durationMs = totalDuration,
+                                startTimestamp = 0L,
+                                latestToken = "",
                                 peakRamMb = chunk.metrics?.peakRamUsageMb ?: model.requiredRamMb,
                                 isNativeEngine = true,
                                 engineDescription = chunk.metrics?.engineDescription ?: "llama.cpp ARM64 NEON",

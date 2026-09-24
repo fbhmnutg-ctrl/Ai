@@ -38,6 +38,8 @@ data class ActiveGenerationState(
     val tokensPerSecond: Float = 0f,
     val timeToFirstTokenMs: Long = 0L,
     val durationMs: Long = 0L,
+    val startTimestamp: Long = 0L,
+    val latestToken: String = "",
     val peakRamMb: Int = 0,
     val engineSource: String = "LOCAL_GGUF",
     val isNativeEngine: Boolean = false,
@@ -85,9 +87,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val settingsManager = SettingsManager.getInstance(application)
     val isStreamingEnabled: StateFlow<Boolean> = settingsManager.isStreamingEnabled
     val isIntegratedThinkEnabled: StateFlow<Boolean> = settingsManager.isIntegratedThinkEnabled
+    val showThinkingProcess: StateFlow<Boolean> = settingsManager.showThinkingProcess
+    val maxTokens: StateFlow<Int> = settingsManager.maxTokens
+    val topK: StateFlow<Int> = settingsManager.topK
+    val repeatPenalty: StateFlow<Float> = settingsManager.repeatPenalty
 
     fun toggleIntegratedThink() {
         settingsManager.toggleIntegratedThink()
+    }
+
+    fun toggleThinkingProcess() {
+        settingsManager.toggleThinkingProcess()
+    }
+
+    fun setShowThinkingProcess(show: Boolean) {
+        settingsManager.setShowThinkingProcess(show)
     }
 
     // The template selection list contains a maximum of 5 templates for display
@@ -224,11 +238,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _inputText.value = text
     }
 
-    fun updateSettings(temp: Float, p: Float, threads: Int, prompt: String) {
+    fun updateSettings(
+        temp: Float,
+        p: Float,
+        threads: Int,
+        prompt: String,
+        maxTokensValue: Int = 2048,
+        topKValue: Int = 40,
+        repeatPenaltyValue: Float = 1.1f,
+        showThinking: Boolean = true
+    ) {
         _temperature.value = temp
         _topP.value = p
         _cpuThreads.value = threads
         _systemPrompt.value = prompt
+
+        settingsManager.setTemperature(temp)
+        settingsManager.setTopP(p)
+        settingsManager.setCpuThreads(threads)
+        settingsManager.setMaxTokens(maxTokensValue)
+        settingsManager.setTopK(topKValue)
+        settingsManager.setRepeatPenalty(repeatPenaltyValue)
+        settingsManager.setShowThinkingProcess(showThinking)
 
         val sId = _currentSessionId.value ?: return
         viewModelScope.launch {
@@ -398,7 +429,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 gpuOffloadLayers = settingsManager.gpuOffloadLayers.value,
                 isOomGuardEnabled = settingsManager.isOomGuardEnabled.value,
                 isOllama = isOllama,
-                ollamaClient = if (isOllama) ollamaClient else null
+                ollamaClient = if (isOllama) ollamaClient else null,
+                maxTokens = settingsManager.maxTokens.value,
+                topK = settingsManager.topK.value,
+                repeatPenalty = settingsManager.repeatPenalty.value,
+                showThinkingProcess = settingsManager.showThinkingProcess.value
             )
         }
     }

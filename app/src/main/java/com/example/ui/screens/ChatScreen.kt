@@ -15,6 +15,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,7 +59,10 @@ import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -74,6 +79,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -103,6 +110,9 @@ import com.example.data.local.SettingsManager
 import com.example.data.local.entity.ChatMessage
 import com.example.data.local.entity.LocalModelEntity
 import com.example.engine.LocalInferenceEngine
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import com.example.ui.components.CodeBlockView
 import com.example.ui.theme.AllDevThemes
 import com.example.ui.theme.DevThemeColors
@@ -139,6 +149,10 @@ fun ChatScreen(
     val topP by viewModel.topP.collectAsStateWithLifecycle()
     val cpuThreads by viewModel.cpuThreads.collectAsStateWithLifecycle()
     val systemPrompt by viewModel.systemPrompt.collectAsStateWithLifecycle()
+    val showThinkingProcess by viewModel.showThinkingProcess.collectAsStateWithLifecycle()
+    val maxTokens by viewModel.maxTokens.collectAsStateWithLifecycle()
+    val topK by viewModel.topK.collectAsStateWithLifecycle()
+    val repeatPenalty by viewModel.repeatPenalty.collectAsStateWithLifecycle()
 
     var showParamsSheet by remember { mutableStateOf(false) }
     var showSessionsMenu by remember { mutableStateOf(false) }
@@ -200,14 +214,16 @@ fun ChatScreen(
             .fillMaxSize()
             .background(devTheme.bg)
     ) {
-        // Minimalist Top Developer Header
+        // Minimalist Top Developer Header with Thinking Process Toggle
         MinimalTopChatHeader(
             activeModel = activeModel,
             selectedEngine = selectedEngine,
             isLoadedInMemory = modelLoadingState.isLoadedInMemory,
             currentThemeIcon = devTheme.icon,
+            showThinkingProcess = showThinkingProcess,
             onModelClick = { showModelSelectorMenu = true },
             onThemeClick = { showThemeMenu = true },
+            onToggleThinkingProcess = { viewModel.toggleThinkingProcess() },
             onNewChat = { viewModel.createNewSession() },
             onOpenSettings = { showParamsSheet = true },
             onToggleSessions = { showSessionsMenu = true }
@@ -517,7 +533,11 @@ fun ChatScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(messages, key = { it.id }) { msg ->
-                        CleanMessageItem(message = msg, devTheme = devTheme)
+                        CleanMessageItem(
+                            message = msg,
+                            devTheme = devTheme,
+                            showThinkingProcess = showThinkingProcess
+                        )
                     }
 
                     // Live streaming bubble if active
@@ -526,6 +546,7 @@ fun ChatScreen(
                             CleanStreamingBubble(
                                 state = generationState,
                                 devTheme = devTheme,
+                                showThinkingProcess = showThinkingProcess,
                                 onStop = { viewModel.stopGeneration() }
                             )
                         }
@@ -591,17 +612,30 @@ fun ChatScreen(
         )
     }
 
-    // Parameters Bottom Sheet
+    // Parameters Bottom Sheet with full runtime model controls
     if (showParamsSheet) {
         CleanParametersBottomSheet(
             temperature = temperature,
             topP = topP,
+            topK = topK,
+            maxTokens = maxTokens,
+            repeatPenalty = repeatPenalty,
             cpuThreads = cpuThreads,
+            showThinkingProcess = showThinkingProcess,
             systemPrompt = systemPrompt,
             devTheme = devTheme,
             onDismiss = { showParamsSheet = false },
-            onSave = { temp, p, threads, prompt ->
-                viewModel.updateSettings(temp, p, threads, prompt)
+            onSave = { temp, p, k, maxTok, repPen, threads, showThink, prompt ->
+                viewModel.updateSettings(
+                    temp = temp,
+                    p = p,
+                    threads = threads,
+                    prompt = prompt,
+                    maxTokensValue = maxTok,
+                    topKValue = k,
+                    repeatPenaltyValue = repPen,
+                    showThinking = showThink
+                )
                 showParamsSheet = false
             }
         )
@@ -617,8 +651,10 @@ fun MinimalTopChatHeader(
     selectedEngine: String,
     isLoadedInMemory: Boolean,
     currentThemeIcon: String,
+    showThinkingProcess: Boolean = true,
     onModelClick: () -> Unit,
     onThemeClick: () -> Unit,
+    onToggleThinkingProcess: () -> Unit = {},
     onNewChat: () -> Unit,
     onOpenSettings: () -> Unit,
     onToggleSessions: () -> Unit,
@@ -685,6 +721,23 @@ fun MinimalTopChatHeader(
                         .background(devTheme.surface)
                 ) {
                     Text(text = currentThemeIcon, fontSize = 14.sp)
+                }
+
+                // Quick Thinking Process Demonstration Toggle
+                IconButton(
+                    onClick = onToggleThinkingProcess,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(if (showThinkingProcess) devTheme.tertiary.copy(alpha = 0.15f) else Color.Transparent)
+                        .testTag("toggle_thinking_process_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Psychology,
+                        contentDescription = if (showThinkingProcess) "Thinking Process Visible" else "Thinking Process Hidden",
+                        tint = if (showThinkingProcess) devTheme.tertiary else devTheme.textMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
 
                 IconButton(
@@ -844,6 +897,7 @@ fun BeautifulChatEmptyState(
 fun CleanMessageItem(
     message: ChatMessage,
     devTheme: DevThemeColors,
+    showThinkingProcess: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val isUser = message.role == "user"
@@ -922,21 +976,36 @@ fun CleanMessageItem(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 // Formatted Content with Thinking Process support
-                CleanFormattedAssistantContent(content = message.content, devTheme = devTheme)
+                CleanFormattedAssistantContent(
+                    content = message.content,
+                    devTheme = devTheme,
+                    showThinkingProcess = showThinkingProcess
+                )
 
-                // Stats footer (discreet monospace)
-                if (message.tokensPerSecond > 0f) {
+                // Stats and duration footer (discreet monospace)
+                if (message.tokensPerSecond > 0f || message.generationDurationMs > 0L) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${message.tokensPerSecond} tok/s",
-                            color = devTheme.secondary,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        if (message.generationDurationMs > 0L) {
+                            val durationSec = message.generationDurationMs / 1000f
+                            Text(
+                                text = String.format(java.util.Locale.US, "⏱ %.1fs", durationSec),
+                                color = devTheme.primary,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        if (message.tokensPerSecond > 0f) {
+                            Text(
+                                text = "${message.tokensPerSecond} tok/s",
+                                color = devTheme.secondary,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                         if (message.timeToFirstTokenMs > 0) {
                             Text(
                                 text = "TTFT: ${message.timeToFirstTokenMs}ms",
@@ -945,12 +1014,14 @@ fun CleanMessageItem(
                                 fontFamily = FontFamily.Monospace
                             )
                         }
-                        Text(
-                            text = "${message.tokensCount} tokens",
-                            color = devTheme.textMuted,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        if (message.tokensCount > 0) {
+                            Text(
+                                text = "${message.tokensCount} tokens",
+                                color = devTheme.textMuted,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                     }
                 }
             }
@@ -959,10 +1030,14 @@ fun CleanMessageItem(
 }
 
 /**
- * Assistant content renderer with collapsible thinking process.
+ * Assistant content renderer with optional collapsible thinking process.
  */
 @Composable
-fun CleanFormattedAssistantContent(content: String, devTheme: DevThemeColors) {
+fun CleanFormattedAssistantContent(
+    content: String,
+    devTheme: DevThemeColors,
+    showThinkingProcess: Boolean = true
+) {
     var isThinkingExpanded by remember { mutableStateOf(false) }
 
     if (content.contains("<think>") && content.contains("</think>")) {
@@ -971,68 +1046,73 @@ fun CleanFormattedAssistantContent(content: String, devTheme: DevThemeColors) {
         val thinkContent = content.substring(thinkStart, thinkEnd).trim()
         val restContent = content.substring(thinkEnd + 8).trim()
 
-        val isArabicThink = LocalInferenceEngine.isArabicText(thinkContent)
+        if (showThinkingProcess) {
+            val isArabicThink = LocalInferenceEngine.isArabicText(thinkContent)
 
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = devTheme.surface,
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
-        ) {
-            Column(modifier = Modifier.padding(10.dp)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { isThinkingExpanded = !isThinkingExpanded },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = devTheme.surface,
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isThinkingExpanded = !isThinkingExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Psychology,
+                                contentDescription = null,
+                                tint = devTheme.tertiary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = if (isArabicThink) "مسار التفكير والتحليل (Chain-of-Thought)" else "Reasoning Trace",
+                                color = devTheme.tertiary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                         Icon(
-                            imageVector = Icons.Default.Psychology,
+                            imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                             contentDescription = null,
-                            tint = devTheme.tertiary,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Text(
-                            text = if (isArabicThink) "مسار التفكير والتحليل (Chain-of-Thought)" else "Reasoning Trace",
-                            color = devTheme.tertiary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
+                            tint = devTheme.textMuted,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
-                    Icon(
-                        imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = devTheme.textMuted,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
 
-                if (isThinkingExpanded) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = thinkContent,
-                        color = devTheme.textSecondary,
-                        fontSize = 12.sp,
-                        fontFamily = if (isArabicThink) FontFamily.Default else FontFamily.Monospace,
-                        lineHeight = 18.sp,
-                        style = LocalTextStyle.current.copy(
-                            textDirection = TextDirection.ContentOrLtr,
-                            textAlign = if (isArabicThink) TextAlign.End else TextAlign.Start
+                    if (isThinkingExpanded) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = thinkContent,
+                            color = devTheme.textSecondary,
+                            fontSize = 12.sp,
+                            fontFamily = if (isArabicThink) FontFamily.Default else FontFamily.Monospace,
+                            lineHeight = 18.sp,
+                            style = LocalTextStyle.current.copy(
+                                textDirection = TextDirection.ContentOrLtr,
+                                textAlign = if (isArabicThink) TextAlign.End else TextAlign.Start
+                            )
                         )
-                    )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(6.dp))
-        CleanRenderMarkdownContent(restContent, devTheme)
+            Spacer(modifier = Modifier.height(6.dp))
+            CleanRenderMarkdownContent(restContent, devTheme)
+        } else {
+            // Thinking process hidden: display cleaned response
+            CleanRenderMarkdownContent(restContent.ifBlank { content }, devTheme)
+        }
     } else {
         CleanRenderMarkdownContent(content, devTheme)
     }
@@ -1083,12 +1163,13 @@ fun CleanRenderMarkdownContent(text: String, devTheme: DevThemeColors) {
 }
 
 /**
- * Clean streaming bubble with cursor pulse.
+ * Clean streaming bubble with live stopwatch timer, token stream telemetry, and cursor pulse.
  */
 @Composable
 fun CleanStreamingBubble(
     state: com.example.ui.viewmodel.ActiveGenerationState,
     devTheme: DevThemeColors,
+    showThinkingProcess: Boolean = true,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1104,6 +1185,22 @@ fun CleanStreamingBubble(
     )
     val isArabic = LocalInferenceEngine.isArabicText(state.streamingContent)
 
+    // Dynamic Live Stopwatch Timer that updates continuously from generation start
+    var liveElapsedMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(state.isGenerating, state.startTimestamp) {
+        if (state.isGenerating && state.startTimestamp > 0L) {
+            while (isActive) {
+                liveElapsedMs = (System.currentTimeMillis() - state.startTimestamp).coerceAtLeast(0L)
+                delay(50)
+            }
+        } else {
+            liveElapsedMs = state.durationMs
+        }
+    }
+
+    val totalSec = liveElapsedMs / 1000f
+    val timerFormatted = String.format(java.util.Locale.US, "⏱ %02d:%04.1fs", (totalSec / 60).toInt(), totalSec % 60)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1116,21 +1213,37 @@ fun CleanStreamingBubble(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(6.dp)
+                        .size(7.dp)
                         .clip(CircleShape)
                         .background(devTheme.primary.copy(alpha = alpha))
                 )
                 Text(
-                    text = if (isArabic) "جاري التوليد على المعالج..." else "Evaluating tokens...",
+                    text = if (isArabic) "جاري التوليد المباشر..." else "Evaluating response...",
                     color = devTheme.primary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     fontFamily = FontFamily.Monospace
                 )
+
+                // Live generation timer badge
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = devTheme.primary.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.primary.copy(alpha = 0.4f))
+                ) {
+                    Text(
+                        text = timerFormatted,
+                        color = devTheme.primary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
 
             TextButton(
@@ -1176,7 +1289,8 @@ fun CleanStreamingBubble(
             if (state.streamingContent.contains("<think>") || state.streamingContent.contains("```")) {
                 CleanFormattedAssistantContent(
                     content = state.streamingContent + " ▋",
-                    devTheme = devTheme
+                    devTheme = devTheme,
+                    showThinkingProcess = showThinkingProcess
                 )
             } else {
                 Text(
@@ -1192,20 +1306,50 @@ fun CleanStreamingBubble(
             }
         }
 
-        if (state.tokensPerSecond > 0f) {
+        // Live streaming token telemetry telemetry chip
+        if (state.tokensGenerated > 0 || state.tokensPerSecond > 0f) {
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "${state.tokensPerSecond} tok/s • ${state.tokensGenerated} tokens",
-                color = devTheme.textMuted,
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "⚡ ${state.tokensGenerated} tokens streamed",
+                        color = devTheme.secondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    if (state.tokensPerSecond > 0f) {
+                        Text(
+                            text = "• ${state.tokensPerSecond} tok/s",
+                            color = devTheme.textMuted,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+                if (state.timeToFirstTokenMs > 0) {
+                    Text(
+                        text = "TTFT: ${state.timeToFirstTokenMs}ms",
+                        color = devTheme.textMuted,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
         }
     }
 }
 
 /**
  * Modern floating capsule input bar with integrated Think button.
+ * Unrestricted user input: screen can be fully controlled anytime.
  */
 @Composable
 fun CleanChatInputBar(
@@ -1243,7 +1387,7 @@ fun CleanChatInputBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // "Think" Feature Toggle Button right next to the request writing box
+                // "Think" Feature Toggle Button - Unrestricted interaction
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = if (isThinkActive) devTheme.primary.copy(alpha = 0.18f) else devTheme.card.copy(alpha = 0.7f),
@@ -1253,7 +1397,7 @@ fun CleanChatInputBar(
                     ),
                     modifier = Modifier
                         .clip(RoundedCornerShape(18.dp))
-                        .clickable(enabled = !isGenerating) { onToggleThink() }
+                        .clickable { onToggleThink() }
                         .testTag("think_toggle_button")
                 ) {
                     Row(
@@ -1285,13 +1429,14 @@ fun CleanChatInputBar(
                     }
                 }
 
+                // Text field always unrestricted: user can type, prepare, or paste anytime
                 OutlinedTextField(
                     value = text,
                     onValueChange = onTextChanged,
                     placeholder = {
                         Text(
-                            text = if (isGenerating) "Generating response..." 
-                                   else if (isThinkActive) "Message (Think active)..." 
+                            text = if (isGenerating) "Type while streaming..."
+                                   else if (isThinkActive) "Message (Think active)..."
                                    else "Message...",
                             color = devTheme.textMuted,
                             fontSize = 14.sp
@@ -1316,29 +1461,51 @@ fun CleanChatInputBar(
                         cursorColor = devTheme.primary
                     ),
                     maxLines = 4,
-                    enabled = !isGenerating
+                    enabled = true
                 )
 
-                // Dynamic Action Button (Glowing send or Red stop)
-                IconButton(
-                    onClick = { if (isGenerating) onStop() else onSend() },
-                    enabled = isGenerating || text.isNotBlank(),
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isGenerating) Color(0xFFEF4444)
-                            else if (text.isNotBlank()) devTheme.primary
-                            else devTheme.border.copy(alpha = 0.5f)
-                        )
-                        .testTag("send_message_button")
+                // Unrestricted Action Controls: Stop button and Send button
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isGenerating) Icons.Default.Stop else Icons.Default.ArrowUpward,
-                        contentDescription = if (isGenerating) "Stop" else "Send",
-                        tint = if (isGenerating) Color.White else if (text.isNotBlank()) devTheme.bg else devTheme.textMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    if (isGenerating) {
+                        IconButton(
+                            onClick = onStop,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEF4444))
+                                .testTag("stop_generation_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "Stop",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onSend,
+                        enabled = text.isNotBlank(),
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (text.isNotBlank()) devTheme.primary
+                                else devTheme.border.copy(alpha = 0.5f)
+                            )
+                            .testTag("send_message_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowUpward,
+                            contentDescription = "Send",
+                            tint = if (text.isNotBlank()) devTheme.bg else devTheme.textMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1346,22 +1513,30 @@ fun CleanChatInputBar(
 }
 
 /**
- * Clean parameters sheet with developer styling.
+ * Clean parameters sheet with full developer and model controls.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CleanParametersBottomSheet(
     temperature: Float,
     topP: Float,
+    topK: Int,
+    maxTokens: Int,
+    repeatPenalty: Float,
     cpuThreads: Int,
+    showThinkingProcess: Boolean,
     systemPrompt: String,
     devTheme: DevThemeColors,
     onDismiss: () -> Unit,
-    onSave: (Float, Float, Int, String) -> Unit
+    onSave: (Float, Float, Int, Int, Float, Int, Boolean, String) -> Unit
 ) {
     var temp by remember { mutableStateOf(temperature) }
     var p by remember { mutableStateOf(topP) }
+    var k by remember { mutableStateOf(topK) }
+    var maxTok by remember { mutableStateOf(maxTokens) }
+    var repPen by remember { mutableStateOf(repeatPenalty) }
     var threads by remember { mutableStateOf(cpuThreads) }
+    var showThinking by remember { mutableStateOf(showThinkingProcess) }
     var prompt by remember { mutableStateOf(systemPrompt) }
 
     ModalBottomSheet(
@@ -1373,16 +1548,130 @@ fun CleanParametersBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 14.dp)
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = "Runtime Hyperparameters",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = devTheme.textPrimary,
-                fontFamily = FontFamily.Monospace
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Runtime Hyperparameters",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = devTheme.textPrimary,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Local llama.cpp",
+                    fontSize = 11.sp,
+                    color = devTheme.primary,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            // Demonstrate Thinking Process Toggle Switch
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = devTheme.surface,
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Psychology,
+                                contentDescription = null,
+                                tint = devTheme.tertiary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Show Thinking Process",
+                                color = devTheme.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Text(
+                            text = "Display model reasoning (<think> tags) in an expandable trace",
+                            color = devTheme.textSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    Switch(
+                        checked = showThinking,
+                        onCheckedChange = { showThinking = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = devTheme.bg,
+                            checkedTrackColor = devTheme.primary,
+                            uncheckedThumbColor = devTheme.textMuted,
+                            uncheckedTrackColor = devTheme.surface
+                        )
+                    )
+                }
+            }
+
+            // Max Tokens
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Max Output Tokens", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text("$maxTok tokens", color = devTheme.primary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+                Slider(
+                    value = maxTok.toFloat(),
+                    onValueChange = { maxTok = it.toInt() },
+                    valueRange = 128f..4096f,
+                    steps = 30,
+                    colors = SliderDefaults.colors(
+                        thumbColor = devTheme.primary,
+                        activeTrackColor = devTheme.primary,
+                        inactiveTrackColor = devTheme.border
+                    )
+                )
+                // Quick preset chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(256, 512, 1024, 2048, 4096).forEach { preset ->
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (maxTok == preset) devTheme.primary.copy(alpha = 0.2f) else devTheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                0.5.dp,
+                                if (maxTok == preset) devTheme.primary else devTheme.border
+                            ),
+                            modifier = Modifier
+                                .clickable { maxTok = preset }
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "$preset",
+                                color = if (maxTok == preset) devTheme.primary else devTheme.textSecondary,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+            }
 
             // Temperature
             Column {
@@ -1390,8 +1679,8 @@ fun CleanParametersBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Temperature (Randomness)", color = devTheme.textSecondary, fontSize = 12.sp)
-                    Text(String.format("%.2f", temp), color = devTheme.primary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    Text("Temperature (Creativity)", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text(String.format(java.util.Locale.US, "%.2f", temp), color = devTheme.primary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
                     value = temp,
@@ -1411,8 +1700,8 @@ fun CleanParametersBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Top-P (Nucleus)", color = devTheme.textSecondary, fontSize = 12.sp)
-                    Text(String.format("%.2f", p), color = devTheme.primary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    Text("Top-P (Nucleus Sampling)", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text(String.format(java.util.Locale.US, "%.2f", p), color = devTheme.primary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
                     value = p,
@@ -1426,13 +1715,56 @@ fun CleanParametersBottomSheet(
                 )
             }
 
+            // Top K
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Top-K (Vocabulary Candidate Pool)", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text("$k candidates", color = devTheme.secondary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+                Slider(
+                    value = k.toFloat(),
+                    onValueChange = { k = it.toInt() },
+                    valueRange = 1f..100f,
+                    steps = 98,
+                    colors = SliderDefaults.colors(
+                        thumbColor = devTheme.secondary,
+                        activeTrackColor = devTheme.secondary,
+                        inactiveTrackColor = devTheme.border
+                    )
+                )
+            }
+
+            // Repetition Penalty
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Repetition Penalty", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text(String.format(java.util.Locale.US, "%.2f", repPen), color = devTheme.secondary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+                Slider(
+                    value = repPen,
+                    onValueChange = { repPen = it },
+                    valueRange = 1.0f..1.8f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = devTheme.secondary,
+                        activeTrackColor = devTheme.secondary,
+                        inactiveTrackColor = devTheme.border
+                    )
+                )
+            }
+
             // CPU Threads
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Compute Threads", color = devTheme.textSecondary, fontSize = 12.sp)
+                    Text("CPU Compute Threads", color = devTheme.textSecondary, fontSize = 12.sp)
                     Text("$threads Cores", color = devTheme.secondary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
                 Slider(
@@ -1470,10 +1802,10 @@ fun CleanParametersBottomSheet(
             }
 
             Button(
-                onClick = { onSave(temp, p, threads, prompt) },
+                onClick = { onSave(temp, p, k, maxTok, repPen, threads, showThinking, prompt) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
+                    .height(46.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = devTheme.primary),
                 shape = RoundedCornerShape(10.dp)
             ) {

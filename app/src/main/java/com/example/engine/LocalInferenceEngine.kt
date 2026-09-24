@@ -54,7 +54,11 @@ class LocalInferenceEngine {
         context: Context? = null,
         isGpuOffloadEnabled: Boolean = true,
         gpuOffloadLayers: Int = -1,
-        isOomGuardEnabled: Boolean = true
+        isOomGuardEnabled: Boolean = true,
+        maxTokens: Int = 2048,
+        topK: Int = 40,
+        repeatPenalty: Float = 1.1f,
+        showThinkingProcess: Boolean = true
     ): Flow<GenerationChunk> = flow {
         val userPrompt = userPromptOverride?.trim()?.ifEmpty { null }
             ?: messages.lastOrNull { it.role == "user" }?.content?.trim()
@@ -65,6 +69,7 @@ class LocalInferenceEngine {
         // Check model file existence on storage across multiple locations
         val resolvedFile: File? = when {
             !model.filePath.isNullOrEmpty() && File(model.filePath).exists() && File(model.filePath).length() > 0 -> File(model.filePath)
+            context != null && ModelStorageManager.getTargetModelFile(context, model.name, model.filename).exists() -> ModelStorageManager.getTargetModelFile(context, model.name, model.filename)
             context != null && File(File(context.filesDir, "models"), model.filename).exists() -> File(File(context.filesDir, "models"), model.filename)
             context != null && File(context.filesDir, model.filename).exists() -> File(context.filesDir, model.filename)
             else -> model.filePath?.let { File(it) }
@@ -120,7 +125,7 @@ class LocalInferenceEngine {
                 contextLength = offloadPlan.safeContextLength,
                 threads = offloadPlan.cpuThreads,
                 gpuLayers = offloadPlan.gpuOffloadLayers,
-                maxTokens = 2048,
+                maxTokens = maxTokens,
                 stopTokens = ChatTemplateEngine.UNIFIED_STOP_TOKENS
             )
         } else null
@@ -151,8 +156,15 @@ class LocalInferenceEngine {
             rawText
         }
 
+        // Demonstrate thinking process conditionally (optional)
+        val finalResponseText = if (!showThinkingProcess && fullResponse.contains("<think>")) {
+            fullResponse.replace(Regex("<think>[\\s\\S]*?</think>"), "").trim()
+        } else {
+            fullResponse
+        }
+
         // Tokenize text for real-time live streaming from speech start
-        val tokens = tokenizeText(fullResponse)
+        val tokens = tokenizeText(finalResponseText)
         var generatedTokensCount = 0
         val ttft = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
 
