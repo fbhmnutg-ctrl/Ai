@@ -602,12 +602,12 @@ fun ChatScreen(
         CleanChatInputBar(
             text = inputText,
             isGenerating = generationState.isGenerating,
-            isThinkActive = isIntegratedThinkEnabled,
+            isThinkActive = isIntegratedThinkEnabled || showThinkingProcess,
             devTheme = devTheme,
             onTextChanged = { viewModel.onInputTextChanged(it) },
             onSend = { viewModel.sendMessage() },
             onStop = { viewModel.stopGeneration() },
-            onToggleThink = { viewModel.toggleIntegratedThink() },
+            onToggleThink = { viewModel.toggleThinkingProcess() },
             modifier = Modifier.imePadding()
         )
     }
@@ -1038,26 +1038,33 @@ fun CleanFormattedAssistantContent(
     devTheme: DevThemeColors,
     showThinkingProcess: Boolean = true
 ) {
-    var isThinkingExpanded by remember { mutableStateOf(false) }
-
-    if (content.contains("<think>") && content.contains("</think>")) {
+    if (content.contains("<think>")) {
         val thinkStart = content.indexOf("<think>") + 7
-        val thinkEnd = content.indexOf("</think>")
-        val thinkContent = content.substring(thinkStart, thinkEnd).trim()
-        val restContent = content.substring(thinkEnd + 8).trim()
+        val hasThinkEnd = content.contains("</think>")
+        val thinkEnd = if (hasThinkEnd) content.indexOf("</think>") else content.length
+        val thinkContent = content.substring(thinkStart, thinkEnd.coerceAtLeast(thinkStart)).trim()
+        val restContent = if (hasThinkEnd) content.substring((thinkEnd + 8).coerceAtMost(content.length)).trim() else ""
+        val isThinkingComplete = hasThinkEnd
+
+        var isThinkingExpanded by remember(isThinkingComplete) {
+            mutableStateOf(!isThinkingComplete)
+        }
 
         if (showThinkingProcess) {
             val isArabicThink = LocalInferenceEngine.isArabicText(thinkContent)
 
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = devTheme.surface,
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, devTheme.border),
+                border = androidx.compose.foundation.BorderStroke(
+                    0.5.dp,
+                    if (!isThinkingComplete) devTheme.primary.copy(alpha = 0.6f) else devTheme.border
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
             ) {
-                Column(modifier = Modifier.padding(10.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1067,37 +1074,63 @@ fun CleanFormattedAssistantContent(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Psychology,
                                 contentDescription = null,
-                                tint = devTheme.tertiary,
-                                modifier = Modifier.size(15.dp)
+                                tint = if (!isThinkingComplete) devTheme.primary else devTheme.tertiary,
+                                modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = if (isArabicThink) "مسار التفكير والتحليل (Chain-of-Thought)" else "Reasoning Trace",
-                                color = devTheme.tertiary,
+                                text = when {
+                                    !isThinkingComplete && isArabicThink -> "مسار التفكير والتحليل (قيد التوليد...) ⚡"
+                                    !isThinkingComplete -> "Reasoning Trace (Thinking...) ⚡"
+                                    isArabicThink -> "مسار التفكير والتحليل (مكتمل)"
+                                    else -> "Reasoning Trace"
+                                },
+                                color = if (!isThinkingComplete) devTheme.primary else devTheme.tertiary,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
-                        Icon(
-                            imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = devTheme.textMuted,
-                            modifier = Modifier.size(16.dp)
-                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            if (!isThinkingComplete) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = devTheme.primary.copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        text = if (isArabicThink) "جاري التفكير..." else "Thinking...",
+                                        color = devTheme.primary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = if (isThinkingExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = devTheme.textMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
 
                     if (isThinkingExpanded) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = thinkContent,
+                            text = thinkContent + if (!isThinkingComplete) " ▋" else "",
                             color = devTheme.textSecondary,
                             fontSize = 12.sp,
                             fontFamily = if (isArabicThink) FontFamily.Default else FontFamily.Monospace,
-                            lineHeight = 18.sp,
+                            lineHeight = 19.sp,
                             style = LocalTextStyle.current.copy(
                                 textDirection = TextDirection.ContentOrLtr,
                                 textAlign = if (isArabicThink) TextAlign.End else TextAlign.Start
@@ -1107,11 +1140,15 @@ fun CleanFormattedAssistantContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-            CleanRenderMarkdownContent(restContent, devTheme)
+            if (isThinkingComplete && restContent.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                CleanRenderMarkdownContent(restContent, devTheme)
+            }
         } else {
             // Thinking process hidden: display cleaned response
-            CleanRenderMarkdownContent(restContent.ifBlank { content }, devTheme)
+            if (isThinkingComplete) {
+                CleanRenderMarkdownContent(restContent.ifBlank { content }, devTheme)
+            }
         }
     } else {
         CleanRenderMarkdownContent(content, devTheme)
@@ -1221,8 +1258,14 @@ fun CleanStreamingBubble(
                         .clip(CircleShape)
                         .background(devTheme.primary.copy(alpha = alpha))
                 )
+                val isThinkingActive = state.streamingContent.contains("<think>") && !state.streamingContent.contains("</think>")
                 Text(
-                    text = if (isArabic) "جاري التوليد المباشر..." else "Evaluating response...",
+                    text = when {
+                        isThinkingActive && isArabic -> "جاري التفكير والتحليل... ⚡"
+                        isThinkingActive -> "Thinking & reasoning... ⚡"
+                        isArabic -> "جاري تدفق الرموز المباشر... ⚡"
+                        else -> "Streaming tokens live... ⚡"
+                    },
                     color = devTheme.primary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
@@ -1288,13 +1331,13 @@ fun CleanStreamingBubble(
         } else {
             if (state.streamingContent.contains("<think>") || state.streamingContent.contains("```")) {
                 CleanFormattedAssistantContent(
-                    content = state.streamingContent + " ▋",
+                    content = state.streamingContent,
                     devTheme = devTheme,
                     showThinkingProcess = showThinkingProcess
                 )
             } else {
                 Text(
-                    text = state.streamingContent.ifEmpty { if (isArabic) "جاري التفكير..." else "Thinking..." } + " ▋",
+                    text = state.streamingContent.ifEmpty { if (isArabic) "جاري تدفق الإجابة..." else "Streaming response..." } + " ▋",
                     color = devTheme.textPrimary,
                     fontSize = 14.sp,
                     lineHeight = 23.sp,

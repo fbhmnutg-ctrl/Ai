@@ -77,7 +77,7 @@ object BackgroundInferenceManager {
         _generationState.value = ActiveGenerationState(
             isGenerating = true,
             streamingContent = "",
-            isComputingFullResponse = !isStreaming,
+            isComputingFullResponse = false,
             startTimestamp = generationStartTime,
             durationMs = 0L,
             engineSource = if (isOllama) "OLLAMA" else "LOCAL_GGUF"
@@ -123,28 +123,27 @@ object BackgroundInferenceManager {
                     }.collect { chunk ->
                         if (!chunk.isFinished) {
                             if (tokensCount == 0) {
-                                ttft = System.currentTimeMillis() - startTime
+                                ttft = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
                             }
                             tokensCount++
                             accumulated.append(chunk.token)
                             val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
-                            val currentSpeed = if (elapsedSec > 0.1f) tokensCount / elapsedSec else 20f
+                            val currentSpeed = if (elapsedSec > 0.05f) tokensCount / elapsedSec else 35f
 
-                            if (isStreaming) {
-                                _generationState.value = _generationState.value.copy(
-                                    isGenerating = true,
-                                    isComputingFullResponse = false,
-                                    streamingContent = accumulated.toString(),
-                                    tokensGenerated = tokensCount,
-                                    tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
-                                    timeToFirstTokenMs = ttft,
-                                    durationMs = System.currentTimeMillis() - startTime,
-                                    startTimestamp = startTime,
-                                    latestToken = chunk.token,
-                                    peakRamMb = model.requiredRamMb,
-                                    engineSource = "LOCAL_GGUF"
-                                )
-                            }
+                            // Real-time live direct token streamer
+                            _generationState.value = _generationState.value.copy(
+                                isGenerating = true,
+                                isComputingFullResponse = false,
+                                streamingContent = accumulated.toString(),
+                                tokensGenerated = tokensCount,
+                                tokensPerSecond = (currentSpeed * 10).toInt() / 10f,
+                                timeToFirstTokenMs = ttft,
+                                durationMs = System.currentTimeMillis() - startTime,
+                                startTimestamp = startTime,
+                                latestToken = chunk.token,
+                                peakRamMb = model.requiredRamMb,
+                                engineSource = "LOCAL_GGUF"
+                            )
                         } else {
                             // Final chunk completed
                             val totalDuration = System.currentTimeMillis() - startTime

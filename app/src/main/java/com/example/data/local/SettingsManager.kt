@@ -67,6 +67,9 @@ class SettingsManager private constructor(context: Context) {
     fun setShowThinkingProcess(show: Boolean) {
         prefs.edit().putBoolean(KEY_SHOW_THINKING_PROCESS, show).apply()
         _showThinkingProcess.value = show
+        // Sync integrated think flag
+        prefs.edit().putBoolean(KEY_INTEGRATED_THINK_ENABLED, show).apply()
+        _isIntegratedThinkEnabled.value = show
     }
 
     fun toggleThinkingProcess() {
@@ -122,6 +125,9 @@ class SettingsManager private constructor(context: Context) {
     fun setIntegratedThinkEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_INTEGRATED_THINK_ENABLED, enabled).apply()
         _isIntegratedThinkEnabled.value = enabled
+        // Sync show thinking process flag
+        prefs.edit().putBoolean(KEY_SHOW_THINKING_PROCESS, enabled).apply()
+        _showThinkingProcess.value = enabled
     }
 
     fun toggleIntegratedThink() {

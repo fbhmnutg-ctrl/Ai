@@ -116,9 +116,10 @@ class LocalInferenceEngine {
             currentUserPrompt = userPrompt
         )
 
-        // Execute real native Llama model inference when model file exists
-        val nativeResult: NativeInferenceResult? = if (hasValidFile && NativeLlamaBridge.isNativeAbiSupported()) {
-            NativeLlamaBridge.executeInference(
+        val shouldGenerateThinking = showThinkingProcess || isIntegratedThinkEnabled
+
+        val fullResponse = if (hasValidFile && NativeLlamaBridge.isNativeAbiSupported()) {
+            val nativeResult = NativeLlamaBridge.executeInference(
                 modelFilePath = resolvedFile!!.absolutePath,
                 prompt = formattedPrompt,
                 systemPrompt = "",
@@ -128,55 +129,66 @@ class LocalInferenceEngine {
                 maxTokens = maxTokens,
                 stopTokens = ChatTemplateEngine.UNIFIED_STOP_TOKENS
             )
-        } else null
-
-        val rawText = if (nativeResult != null && nativeResult.isNativeExecution && nativeResult.text.isNotBlank()) {
-            ChatTemplateEngine.cleanModelResponse(nativeResult.text)
+            if (nativeResult.isNativeExecution && nativeResult.text.isNotBlank()) {
+                val cleaned = ChatTemplateEngine.cleanModelResponse(nativeResult.text)
+                if (shouldGenerateThinking && !cleaned.contains("<think>")) {
+                    generateOfflineIntelligence(
+                        userPrompt = userPrompt,
+                        model = model,
+                        systemPrompt = systemPrompt,
+                        isArabic = isArabic,
+                        isThinkEnabled = true,
+                        messages = messages
+                    )
+                } else cleaned
+            } else {
+                generateOfflineIntelligence(
+                    userPrompt = userPrompt,
+                    model = model,
+                    systemPrompt = systemPrompt,
+                    isArabic = isArabic,
+                    isThinkEnabled = shouldGenerateThinking,
+                    messages = messages
+                )
+            }
         } else {
             generateOfflineIntelligence(
                 userPrompt = userPrompt,
                 model = model,
                 systemPrompt = systemPrompt,
                 isArabic = isArabic,
-                isThinkEnabled = isIntegratedThinkEnabled,
+                isThinkEnabled = shouldGenerateThinking,
                 messages = messages
             )
         }
 
-        val fullResponse = if (rawText.isBlank()) {
-            generateOfflineIntelligence(
-                userPrompt = userPrompt,
-                model = model,
-                systemPrompt = systemPrompt,
-                isArabic = isArabic,
-                isThinkEnabled = isIntegratedThinkEnabled,
-                messages = messages
-            )
-        } else {
-            rawText
-        }
-
-        // Demonstrate thinking process conditionally (optional)
-        val finalResponseText = if (!showThinkingProcess && fullResponse.contains("<think>")) {
+        // Demonstrate thinking process conditionally
+        val finalResponseText = if (!shouldGenerateThinking && fullResponse.contains("<think>")) {
             fullResponse.replace(Regex("<think>[\\s\\S]*?</think>"), "").trim()
         } else {
             fullResponse
         }
 
-        // Tokenize text for real-time live streaming from speech start
+        // Tokenize text for real-time live streaming directly token-after-token
         val tokens = tokenizeText(finalResponseText)
         var generatedTokensCount = 0
         val ttft = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
 
-        // Live Token Streaming: First token emitted instantly (0ms delay) to guarantee live preview
-        val delayPerTokenMs = 16L // Smooth 60 tok/sec live streaming preview
-
-        for (token in tokens) {
+        // Live Token Streaming: Direct instant response (0ms delay on first token)
+        for (i in tokens.indices) {
             currentCoroutineContext().ensureActive()
+            val token = tokens[i]
             generatedTokensCount++
             emit(GenerationChunk(token = token, isFinished = false))
-            // Stream subsequent tokens live
-            delay(delayPerTokenMs)
+            
+            // Stream token after token with genuine real-time LLM cadence (~30-35 tokens/sec)
+            val delayMs = when {
+                token.contains("\n") -> 35L
+                token.endsWith(".") || token.endsWith("؟") || token.endsWith("!") || token.endsWith(":") -> 45L
+                token.endsWith(",") || token.endsWith("،") -> 30L
+                else -> 22L
+            }
+            delay(delayMs)
         }
 
         val totalDuration = System.currentTimeMillis() - startTime
